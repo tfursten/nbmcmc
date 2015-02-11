@@ -7,7 +7,7 @@ libpolylog.a: $(OBJ)
 	ar rcs libpolylog.a $(OBJ)
 
 polylog.o: polylog.c polylog.h
-	$(CC) -c $(CFLAGS) polylog.c polylog.h
+	$(CC) -c $(CFLAGS) polylog.c
 
 const.o: const.c
 	$(CC) -c $(CFLAGS) const.c
@@ -32,4 +32,3 @@ zetac.o: zetac.c
 
 clean:
 	rm *.o
-	
