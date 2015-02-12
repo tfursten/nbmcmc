@@ -1,15 +1,23 @@
 #include "ibd.h"
 
-void IBD::initialize(double sigma, double mu, double nc, double f, double d){
+void IBD::initialize(double sigma, double mu, string dist_file, double fhat, double density){
 	s = sigma;
 	ss = 6*sigma;
 	u = mu;
-	ndc = nc;
 	fhat = f;
 	de = d;
 	z = exp(-2*u);
 	sqrz = sqrt(1-z);
 	g0 = t_series(0,s,z);
+    ifstream inFile(dist_file)
+    istream_iterator<float> eos;
+    istream_iterator<float> iit(inFile);
+    copy(iit,eos,back_inserter(dist));
+
+}
+
+double cml(){
+    
 }
 
 double IBD::t_series(double x, N=30){

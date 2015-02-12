@@ -6,11 +6,14 @@ all: nbmcmc
 
 .PHONY: polylog
 
-nbmcmc: main.o polylog
-	$(CXX) -o nbmcmc main.o polylog/libpolylog.a -lm -lgsl -lgslcblas
+nbmcmc: main.o ibd.o polylog
+	$(CXX) -o nbmcmc main.o ibd.o polylog/libpolylog.a -lm -lgsl -lgslcblas
 
 main.o: main.cpp
 	$(CXX) -c $(CXXFLAGS) main.cpp
+
+ibd.o: ibd.cpp ibd.h
+	$(CXX) -c $(CXXFLAGS) ibd.cpp
 
 polylog:
 	$(MAKE) -C polylog libpolylog.a

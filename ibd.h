@@ -10,7 +10,7 @@
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_sf_bessel.h>
 #include <gsl/gsl_sf_gamma.h>
-
+#include <ifstream>
 
 using namespace std;
 
@@ -18,21 +18,24 @@ class IBD
 {
 private:
 	
+
 	double s;
 	double ss; //6sigma
 	double u;
 	int ndc;
+	vector<float> dist;
 	double fhat;
 	double de;
 	double z;
 	double sqrz;
 	double g0;
 
-	void initialize(double sigma, double mu, double nc, double f, double d);
+	
 	double t_series(double x, N=30);
 	double bessel(double x);
 
 public:
+	void initialize(double sigma, double mu, double nc, double f, double d);
 
 };
 
