@@ -1,26 +1,68 @@
 #include "ibd.h"
 
-void IBD::initialize(double sigma, double mu, string dist_file, double fhat, double density){
+void IBD::initialize(double sigma, double mu, string dist_file, double fhat, double density, int terms){
 	s = sigma;
-	ss = 6*sigma;
+	ss = s*s;
 	u = mu;
-	fhat = f;
-	de = d;
+	f = fhat;
+	de = density;
+    N = terms;
 	z = exp(-2*u);
 	sqrz = sqrt(1-z);
-	g0 = t_series(0,s,z);
-    ifstream inFile(dist_file)
-    istream_iterator<float> eos;
-    istream_iterator<float> iit(inFile);
-    copy(iit,eos,back_inserter(dist));
+	g0 = t_series(0);
+    ifstream infile(data_file);
+    while(!infile.eof()){
+        double dis;
+        int ct, szof;
+        infile >> dis >> ct >> szof;
+        data[dis] = make_pair(ct,szof);
+        tsz += szof;
+    }
+    split = data.size();
+    for(datamap::iterator it = data.begin(), int i = 0; it != data.end(); ++it, i++){
+        cout << it->first << " " << it->second.first << " " it->second.second << endl;
+        if((i->first)>6*s){
+            split = i;
+            break;
+        }
+    }
+    cout << split << endl;
+}
+
+
+
+double IBD::cml(){
+    double p = 1;
+    func = &IBD::t_series;
+    for(int s=0; s<split; s++){
+        p*=pibd(dist[s]);
+    }
+    func = &IBD::bessel;
+    for(int l=split; l<data.size(); l++){
+        p*=pibd(dist[l]);
+    }
+}
+        
+
+void IBD::phi(){
+    vector<double> phi;
+    double phi_bar;
+    for(datamap::iterator it = data.begin(); it != data.end(); ++it){
+        double p = (this->*func)(it->first)/(2*ss*M_PI*de+g0);
+        phi.insert(p);
+        phi_bar += p*it->second.second; 
+    }
+    phi_bar = phi_bar/tsz;
 
 }
 
-double cml(){
+double IBD::hx(double x){
+    return phi(x)-phat()
+}
     
-}
 
-double IBD::t_series(double x, N=30){
+
+double IBD::t_series(double x){
 	assert(N<64);
     double sum = 0.0;
     int64_t pow2 = 1; 

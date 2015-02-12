@@ -2,40 +2,49 @@
 #define IBD_H_INCLUDED
 
 #include <iostream>
+#include <fstream>
+#include <iterator>
 #include <cstdio>
 #include <cstdint>
 #include <cmath>
+#include <vector>
+#include <algorithm>
 #include <assert.h>
 #include "polylog/polylog.h"
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_sf_bessel.h>
 #include <gsl/gsl_sf_gamma.h>
-#include <ifstream>
+
+
 
 using namespace std;
-
+typedef map<double,pair<int,int>> datamap;
 class IBD
 {
 private:
 	
 
 	double s;
-	double ss; //6sigma
+	double ss; 
 	double u;
 	int ndc;
-	vector<float> dist;
-	double fhat;
+	datamap data;
+	double f;
 	double de;
 	double z;
 	double sqrz;
 	double g0;
 
-	
-	double t_series(double x, N=30);
+	float tsz;
+	int N;
+	int split;
+
+	double (IBD::*func)(double);
+	double t_series(double x);
 	double bessel(double x);
 
 public:
-	void initialize(double sigma, double mu, double nc, double f, double d);
+	void initialize(double sigma, double mu, string dist_file, double fhat, double density, int terms);
 
 };
 
