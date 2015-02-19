@@ -1,12 +1,4 @@
-#include <iostream>
-#include <cstdio>
-#include <cstdint>
-#include <cmath>
-#include <assert.h>
-#include "polylog/polylog.h"
-#include <gsl/gsl_math.h>
-#include <gsl/gsl_sf_bessel.h>
-#include <gsl/gsl_sf_gamma.h>
+#include <gsl/gsl_multimin.h>
 #include "ibd.h"
 
 
@@ -26,17 +18,13 @@ using namespace std;
 
 int main()
 {
-    int m = 5;
     double u = 0.0001;
-    double s = 2;
-    double De = 1;
-    double fhat = .33;
-    double theta = 2.0;
-    double *arr = new double[m];
-    double z = exp(-2*u);
-    double sqrz = sqrt(1-z);
+    double s = 1.0;
+    double ne = 10000;
+    double a = 10000;
     IBD ibd;
-    ibd.initialize(s,m,"dist.txt",fhat,De,30);
+    ibd.initialize(u, a, 30, "data.txt");
+    cout << "ibd update" << ibd.update(s,ne) << endl;
     //double x = polylog(2,3);
     //double x = plog(0.0001 ,2);
     //double gx = 1/(4*M_PI*s*s*De);

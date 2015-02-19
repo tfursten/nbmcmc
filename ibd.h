@@ -18,7 +18,7 @@
 
 
 using namespace std;
-typedef map<double,pair<int,int>> datamap;
+
 class IBD
 {
 private:
@@ -28,26 +28,29 @@ private:
 	double ss; 
 	double u;
 	int ndc;
-	datamap data;
-	double f;
+	vector<int> data;
+	vector<int> sz;
+	vector<double> dist;
+	double fhat;
+	double ne;
+	double a;
 	double de;
 	double z;
 	double sqrz;
 	double g0;
-
 	float tsz;
-	int N;
+	int ntt;
 	int split;
-
-	double (IBD::*func)(double);
+	double cml();
 	double t_series(double x);
 	double bessel(double x);
 
 public:
-	void initialize(double sigma, double mu, string dist_file, double fhat, double density, int terms);
-
+	void initialize(double mu, double area, int num_t_series_terms, string data_file);
+	double update(double sigma_i, double ne_i);
 };
 
+/*
 static double PLOG[30] = {
 8.5172931897496280,
 1.6430306182100543,
@@ -80,5 +83,5 @@ static double PLOG[30] = {
 0.9998000218605815,
 0.9998000209296217,
 };
-
+*/
 #endif // IBD_H_INCLUDED
