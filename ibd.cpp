@@ -1,8 +1,8 @@
 #include "ibd.h"
 
-void IBD::initialize(double mu, double area, int num_t_series_terms, string data_file){
+void IBD::initialize(double mu, double density, int num_t_series_terms, string data_file){
 	u = mu;
-    a = area;
+    de = density;
     ntt = num_t_series_terms;
 	z = exp(-2*u);
 	sqrz = sqrt(1-z);
@@ -24,11 +24,10 @@ void IBD::initialize(double mu, double area, int num_t_series_terms, string data
     cout << "fhat: " << fhat << endl;
 }
 
-double IBD::update(double sigma_i, double ne_i){
+double IBD::update(double sigma_i, double de_i){
     s = sigma_i;
     ss = s*s;
-    ne = ne_i;
-    de = ne/a;
+    de = de_i;
     g0 = t_series(0);
     split = data.size();
     for(int i=0; i<ndc; i++){
@@ -37,7 +36,7 @@ double IBD::update(double sigma_i, double ne_i){
             break;
         }
     }
-    return cml();
+    return -cml();
 }
 
 
@@ -65,7 +64,7 @@ double IBD::cml(){
         double pIBD = fhat + (1-fhat) * r;
         cml += data[i]*log(pIBD)+(sz[i]-data[i])*log(1-pIBD);
     }
-    cout << cml << endl;
+    //cout << cml << endl;
     return cml;
 }
 
