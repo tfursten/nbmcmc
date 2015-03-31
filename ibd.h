@@ -31,6 +31,7 @@ private:
 	vector<int> data;
 	vector<int> sz;
 	vector<double> dist;
+	vector<double> plog;
 	double fhat;
 	double ne;
 	double a;
@@ -46,7 +47,7 @@ private:
 	double bessel(double x);
 
 public:
-	void initialize(double mu, double area, int num_t_series_terms, string data_file);
+	void initialize(double mu, int num_t_series_terms, string data_file);
 	double update(double sigma_i, double de_i);
 };
 

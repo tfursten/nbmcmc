@@ -33,7 +33,7 @@ double my_fun(const gsl_vector *v, void *params){
     if(v1<=0 || v2<=0)
         return 0xFFFFFFFFFFFFFFFF;
     IBD *p = (IBD *)params;
-    return p[0].update(v1,v2);
+    return -p[0].update(v1,v2);
 }
 
 int main()
@@ -41,10 +41,10 @@ int main()
   
 
     double u = 0.0001;
-    double a = 10000;
+    double a = 1.0;
 
     IBD ibd;
-    ibd.initialize(u, a, 30, "data.txt");
+    ibd.initialize(u, 30, "data.txt");
     IBD par[1] = {ibd};
     const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
     gsl_multimin_fminimizer *s = NULL;
@@ -78,16 +78,16 @@ int main()
         if(status)
             break;
         size = gsl_multimin_fminimizer_size(s);
-        status = gsl_multimin_test_size(size,0.1);
+        status = gsl_multimin_test_size(size,0.00001);
 
         if(status == GSL_SUCCESS){
             printf("converged to minimum at\n");
         }
-        printf("%5d %.5f %.5f f() = %7.3f size = %.3f\n",
+        printf("Iteration: %5d Sigma: %.5f Density %.5f f() = %7.3f size = %.3f nb = %.5f\n",
             iter,
             gsl_vector_get(s->x,0),
             gsl_vector_get(s->x,1),
-            s->fval,size);
+            s->fval,size, 2*3.14 * gsl_vector_get(s->x,0)*gsl_vector_get(s->x,0)*gsl_vector_get(s->x,1));
     }
     while(status == GSL_CONTINUE && iter < 10000);
     gsl_vector_free(x);
