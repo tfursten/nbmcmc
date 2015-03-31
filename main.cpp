@@ -31,9 +31,7 @@ double my_fun(const gsl_vector *v, void *params){
     double v1 = gsl_vector_get(v,0);
     double v2 = gsl_vector_get(v,1);
     if(v1<=0 || v2<=0){
-        cout << "HERE" << endl;
         return 0xFFFFFFFFFFFFFFFF;
-
     }
     IBD *p = (IBD *)params;
     return -p[0].update(v1,v2);
@@ -41,18 +39,19 @@ double my_fun(const gsl_vector *v, void *params){
 
 int main(int argc, char *argv[])
 {
+    string fileName;
     if(argc != 2)
         cout << "usage: " <<argv[0] << " <filename>\n";
-    else{
-        string fileName = argv[1];
-    }
+    else
+        fileName = argv[1];
+    
     
     double u = 0.0001;
 
     int numDataElements = 50;
     ifstream inputFile(fileName+".txt");
     if(!inputFile.is_open())
-        cout << "Could not open file" << end;
+        cout << "Could not open file" << endl;
     ofstream out (fileName+"_MLENB.txt",ofstream::out);
 
     vector<int> sz(49,100);
@@ -110,12 +109,12 @@ int main(int argc, char *argv[])
                 out << 2*3.14 * gsl_vector_get(s->x,0)*gsl_vector_get(s->x,0)*gsl_vector_get(s->x,1) << endl;
 
             }
-            printf("Iteration: %5d Sigma: %.5f Density %.5f f() = %7.3f size = %.3f nb = %.5f\n",
-                iter,
-                gsl_vector_get(s->x,0),
-                gsl_vector_get(s->x,1),
-                s->fval,size, 2*3.14 * gsl_vector_get(s->x,0)*gsl_vector_get(s->x,0)*gsl_vector_get(s->x,1));
-            }
+            //printf("Iteration: %5d Sigma: %.5f Density %.5f f() = %7.3f size = %.3f nb = %.5f\n",
+              //  iter,
+                //gsl_vector_get(s->x,0),
+                //gsl_vector_get(s->x,1),
+                //s->fval,size, 2*3.14 * gsl_vector_get(s->x,0)*gsl_vector_get(s->x,0)*gsl_vector_get(s->x,1));
+            
 
         }
         while(status == GSL_CONTINUE && iter < 10000);
@@ -124,7 +123,7 @@ int main(int argc, char *argv[])
         gsl_vector_free(ss);
         gsl_multimin_fminimizer_free(s);
         
-    }
+        }
     return 0;
 }
     //cout << "ibd update" << ibd.update(s,ne) << endl;
