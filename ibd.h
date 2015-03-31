@@ -14,7 +14,7 @@
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_sf_bessel.h>
 #include <gsl/gsl_sf_gamma.h>
-
+#include <numeric>
 
 
 using namespace std;
@@ -47,7 +47,7 @@ private:
 	double bessel(double x);
 
 public:
-	void initialize(double mu, int num_t_series_terms, string data_file);
+	void initialize(double mu, int num_t_series_terms, vector<int> &dataIn, vector<double> &distIn, vector<int> &szIn);
 	double update(double sigma_i, double de_i);
 };
 
