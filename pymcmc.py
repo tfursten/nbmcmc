@@ -11,18 +11,18 @@ f = open('test.txt','r')
 
 #data
 data = f.readline()
-data = data.strip().split(" ")
+data = data.strip().split("\t")
 data = np.array(data,dtype=int)
 
-sz = [100 for i in xrange(49)]
-sz.append(50)
+sz = [100*2000 for i in xrange(49)]
+sz.append(50*2000)
 sz = np.array(sz)
 
 dist = np.array([i+1 for i in xrange(50)])
 
 
 #constant variables
-A = 10000
+A = 10000.0
 k = 1
 mu = 0.0001
 z = exp(-2.0*mu)
@@ -36,8 +36,25 @@ plog = np.array([sy.polylog(i+1,z) for i in xrange(30)])
 
 
 #priors on unknown parameters
-sigma = pymc.Lognormal('sigma',mu=0,tau=0.01,value=2)
-density = pymc.Lognormal('density', mu=1, tau=5,value=1)
+sigma   = pymc.Lognormal('sigma',   mu=0.7, tau=0.01, value=0.68)
+#sigma2  = pymc.Lognormal('sigma2',   mu=0.7, tau=0.01, value=0.68)
+density = pymc.Lognormal('density', mu=0, tau=5, value=0.001)
+#nb      = pymc.Lognormal('nb',      mu=3.2, tau=0.01, value=3.22)
+#ne      = pymc.Lognormal('ne',      mu=3.2, tau=0.01, value=3.22)
+
+
+@pymc.deterministic
+def enb(nb=nb):
+	return exp(nb)
+
+@pymc.deterministic
+def ed(d=density):
+	return exp(d)
+
+@pymc.deterministic
+def sigma(d=ed,nb=enb):
+	return sqrt(nb/(2.0*d*pi))
+
 
 def t_series(x,sigma,plog):
 	sum = 0.0
@@ -67,13 +84,12 @@ def bessel(x,sigma,sqrz):
 
 #deterministic function to calculate pIBD from Wright Malecot formula
 @pymc.deterministic(plot=False)
-def Phi(s=sigma,d=density,g0=g0,data=data,dist=dist,sz=sz,N_dc=N_dc,tsz=tsz,fbar=fbar,plog=plog,sqrz=sqrz): #g0,data,dist,sz,N_dc,tsz,fbar,plog,sqrz,
+def Phi(nb=enb,s=sigma,g0=g0,data=data,dist=dist,sz=sz,N_dc=N_dc,tsz=tsz,fbar=fbar,plog=plog,sqrz=sqrz): #g0,data,dist,sz,N_dc,tsz,fbar,plog,sqrz,
 	'''return a vector phi'''
-	ss=s
-	s=sqrt(ss)
 	phi = np.zeros((N_dc))
 	phi_bar = 0
-	denom = k*pi*ss*d*2.0+g0
+	#denom = k*pi*s*s*(d/A)*2.0+g0
+	denom = nb+g0
 	split = len(data)
 	for i in range(N_dc):
 		if dist[i]>6*s:
@@ -103,8 +119,7 @@ def Phi(s=sigma,d=density,g0=g0,data=data,dist=dist,sz=sz,N_dc=N_dc,tsz=tsz,fbar
 Li = np.empty(N_dc, dtype=object)
 Lsim = np.empty(N_dc,dtype=object)
 for i in range(N_dc):
-	Li[i] = pymc.Binomial('Li_%i'%i, n=data[i], p=Phi[i], observed=True, value=0.5) #figure out phi[i]
-	Lsim[i] = pymc.Binomial('Lsim_%i'%i, n=data[i],p=Phi[i])
-@pymc.deterministic
-def nb(s=sigma,d=density):
-	return 2*pi*s*d
+	Li[i] = pymc.Binomial('Li_%i'%i, n=sz[i], p=Phi[i], observed=True, value=data[i]) #figure out phi[i]
+	Lsim[i] = pymc.Binomial('Lsim_%i'%i, n=sz[i],p=Phi[i])
+
+

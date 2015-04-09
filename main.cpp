@@ -39,90 +39,93 @@ double my_fun(const gsl_vector *v, void *params){
 
 int main(int argc, char *argv[])
 {
-    string fileName;
-    if(argc != 2)
-        cout << "usage: " <<argv[0] << " <filename>\n";
-    else
-        fileName = argv[1];
-    
-    
-    double u = 0.0001;
-
-    int numDataElements = 50;
-    ifstream inputFile(fileName+".txt");
-    if(!inputFile.is_open())
-        cout << "Could not open file" << endl;
-    ofstream out (fileName+"_MLENB.txt",ofstream::out);
-
-    vector<int> sz(49,100);
-    sz.push_back(50);
-    vector<double> dist(numDataElements);
-        
-    for(int i=0; i<50; i++){
-        dist[i] = i+1;
+    ifstream inputFile;
+    ofstream outFile;
+    if(argc != 3)
+        cout << "usage: " <<argv[0] << " <infilename> <outfilename>\n";
+    else{
+        inputFile.open(argv[1]);
+        outFile.open(argv[2]);
     }
 
-    for(int line = 0; line<2000; line++){
-        vector<int> data(numDataElements);
-        for(int i = 0; i<numDataElements; i++)
-            inputFile >> data[i];
+    if(!inputFile.is_open())
+        cout << "Could not open file" << endl;
 
-        IBD ibd;
-        ibd.initialize(u, 30, data,dist,sz);
-        IBD par[1] = {ibd};
-        const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
-        gsl_multimin_fminimizer *s = NULL;
-        gsl_vector *ss, *x;
-        gsl_multimin_function minex_func;
+    else{
+        double u = 0.0001;
+        int numDataElements = 50;
+       
+        vector<int> sz(49,100);
+        sz.push_back(50);
+        vector<double> dist(numDataElements);
+            
+        for(int i=0; i<50; i++){
+            dist[i] = i+1;
+        }
 
-        size_t iter = 0;
-        int status; 
-        double size;
+        for(int line = 0; line<2000; line++){
+            vector<int> data(numDataElements);
+            for(int i = 0; i<numDataElements; i++)
+                inputFile >> data[i];
 
-        /*starting point */
-        x = gsl_vector_alloc (2);
-        gsl_vector_set (x,0,1);
-        gsl_vector_set (x,1,1.5);
+            IBD ibd;
+            ibd.initialize(u, 30, data,dist,sz);
+            IBD par[1] = {ibd};
+            const gsl_multimin_fminimizer_type *T = gsl_multimin_fminimizer_nmsimplex;
+            gsl_multimin_fminimizer *s = NULL;
+            gsl_vector *ss, *x;
+            gsl_multimin_function minex_func;
 
-        /*set initial step sizes to 1*/
-        ss = gsl_vector_alloc(2);
-        gsl_vector_set_all(ss,1.0);
+            size_t iter = 0;
+            int status; 
+            double size;
 
-        /*Initialize method and iterate*/
-        minex_func.n = 2;
-        minex_func.f = my_fun;
-        minex_func.params = par;
+            /*starting point */
+            x = gsl_vector_alloc (2);
+            gsl_vector_set (x,0,3);
+            gsl_vector_set (x,1,1.5);
 
-        s = gsl_multimin_fminimizer_alloc(T,2);
-        gsl_multimin_fminimizer_set(s,&minex_func,x,ss);
-        do{
-            iter++;
-            status = gsl_multimin_fminimizer_iterate(s);
+            /*set initial step sizes to 1*/
+            ss = gsl_vector_alloc(2);
+            gsl_vector_set_all(ss,1.0);
 
-            if(status)
-                break;
-            size = gsl_multimin_fminimizer_size(s);
-            status = gsl_multimin_test_size(size,0.00001);
+            /*Initialize method and iterate*/
+            minex_func.n = 2;
+            minex_func.f = my_fun;
+            minex_func.params = par;
 
-            if(status == GSL_SUCCESS){
-                printf("converged to minimum at\n");
-                out << 2*3.14 * gsl_vector_get(s->x,0)*gsl_vector_get(s->x,0)*gsl_vector_get(s->x,1) << endl;
+            s = gsl_multimin_fminimizer_alloc(T,2);
+            gsl_multimin_fminimizer_set(s,&minex_func,x,ss);
+            do{
+                iter++;
+                status = gsl_multimin_fminimizer_iterate(s);
+
+                if(status)
+                    break;
+                size = gsl_multimin_fminimizer_size(s);
+                status = gsl_multimin_test_size(size,0.00001);
+
+                if(status == GSL_SUCCESS){
+                    //printf("converged to minimum at\n");
+                    outFile << 2*3.14 * gsl_vector_get(s->x,0)*gsl_vector_get(s->x,0)*gsl_vector_get(s->x,1) << endl;
+
+                }
+                //printf("Iteration: %5d Sigma: %.5f Density %.5f f() = %7.3f size = %.3f nb = %.5f\n",
+                  //  iter,
+                    //gsl_vector_get(s->x,0),
+                    //gsl_vector_get(s->x,1),
+                    //s->fval,size, 2*3.14 * gsl_vector_get(s->x,0)*gsl_vector_get(s->x,0)*gsl_vector_get(s->x,1));
+                
 
             }
-            //printf("Iteration: %5d Sigma: %.5f Density %.5f f() = %7.3f size = %.3f nb = %.5f\n",
-              //  iter,
-                //gsl_vector_get(s->x,0),
-                //gsl_vector_get(s->x,1),
-                //s->fval,size, 2*3.14 * gsl_vector_get(s->x,0)*gsl_vector_get(s->x,0)*gsl_vector_get(s->x,1));
-            
-
-        }
-        while(status == GSL_CONTINUE && iter < 10000);
-    
-        gsl_vector_free(x);
-        gsl_vector_free(ss);
-        gsl_multimin_fminimizer_free(s);
+            while(status == GSL_CONTINUE && iter < 10000);
         
+            gsl_vector_free(x);
+            gsl_vector_free(ss);
+            gsl_multimin_fminimizer_free(s);
+            
+            }
+
         }
     return 0;
 }
