@@ -41,11 +41,15 @@ int main(int argc, char *argv[])
 {
     ifstream inputFile;
     ofstream outFile;
-    if(argc != 3)
-        cout << "usage: " <<argv[0] << " <infilename> <outfilename>\n";
+    double sigma, density;
+    if(argc != 5)
+        cout << "usage: " <<argv[0] << " <infilename> <outfilename> <starting sigma> <starting density>\n";
     else{
         inputFile.open(argv[1]);
         outFile.open(argv[2]);
+        sigma = strtod(argv[3],NULL);
+        density = strtod(argv[4],NULL);
+
     }
 
     if(!inputFile.is_open())
@@ -55,15 +59,17 @@ int main(int argc, char *argv[])
         double u = 0.0001;
         int numDataElements = 50;
        
-        vector<int> sz(49,100);
-        sz.push_back(50);
+        vector<int> sz(49,200000); // CHANGE THIS
+        sz.push_back(100000); //CHANGE THIS
         vector<double> dist(numDataElements);
             
         for(int i=0; i<50; i++){
             dist[i] = i+1;
         }
 
-        for(int line = 0; line<2000; line++){
+        outFile << "sigma\tdensity\tnb\tf(x)\n" ;
+
+        for(int line = 0; line<1; line++){
             vector<int> data(numDataElements);
             for(int i = 0; i<numDataElements; i++)
                 inputFile >> data[i];
@@ -82,9 +88,8 @@ int main(int argc, char *argv[])
 
             /*starting point */
             x = gsl_vector_alloc (2);
-            gsl_vector_set (x,0,3);
-            gsl_vector_set (x,1,1.5);
-
+            gsl_vector_set (x,0,sigma);
+            gsl_vector_set (x,1,density);
             /*set initial step sizes to 1*/
             ss = gsl_vector_alloc(2);
             gsl_vector_set_all(ss,1.0);
@@ -103,11 +108,13 @@ int main(int argc, char *argv[])
                 if(status)
                     break;
                 size = gsl_multimin_fminimizer_size(s);
-                status = gsl_multimin_test_size(size,0.00001);
+                status = gsl_multimin_test_size(size,0.0001);
 
                 if(status == GSL_SUCCESS){
                     //printf("converged to minimum at\n");
-                    outFile << 2*3.14 * gsl_vector_get(s->x,0)*gsl_vector_get(s->x,0)*gsl_vector_get(s->x,1) << endl;
+                    double ff = s->fval;
+                    ff = -ff;
+                    outFile << gsl_vector_get(s->x,0)<< "\t" << gsl_vector_get(s->x,1) << "\t" << 2*M_PI * gsl_vector_get(s->x,0)*gsl_vector_get(s->x,0)*gsl_vector_get(s->x,1) << "\t" << ff << endl;
 
                 }
                 //printf("Iteration: %5d Sigma: %.5f Density %.5f f() = %7.3f size = %.3f nb = %.5f\n",
@@ -118,7 +125,7 @@ int main(int argc, char *argv[])
                 
 
             }
-            while(status == GSL_CONTINUE && iter < 10000);
+            while(status == GSL_CONTINUE && iter < 100000);
         
             gsl_vector_free(x);
             gsl_vector_free(ss);

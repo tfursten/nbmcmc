@@ -5,7 +5,7 @@ import sympy.mpmath as sy
 import scipy.misc as fac 
 import scipy.special as sp 
 
-f = open('test.txt','r')
+f = open('./data/exp_1_tot.txt','r')
 
 
 
@@ -32,28 +32,8 @@ tsz = np.sum(sz)
 N_dc = len(dist)
 fbar = np.sum(data)/float(tsz)
 plog = np.array([sy.polylog(i+1,z) for i in xrange(30)])
-
-
-
-#priors on unknown parameters
-sigma   = pymc.Lognormal('sigma',   mu=0.7, tau=0.01, value=0.68)
-#sigma2  = pymc.Lognormal('sigma2',   mu=0.7, tau=0.01, value=0.68)
-density = pymc.Lognormal('density', mu=0, tau=5, value=0.001)
-#nb      = pymc.Lognormal('nb',      mu=3.2, tau=0.01, value=3.22)
-#ne      = pymc.Lognormal('ne',      mu=3.2, tau=0.01, value=3.22)
-
-
-@pymc.deterministic
-def enb(nb=nb):
-	return exp(nb)
-
-@pymc.deterministic
-def ed(d=density):
-	return exp(d)
-
-@pymc.deterministic
-def sigma(d=ed,nb=enb):
-	return sqrt(nb/(2.0*d*pi))
+exp_sigma = 1.0
+exp_nb = 2.0*k*pi*exp_sigma**2
 
 
 def t_series(x,sigma,plog):
@@ -81,14 +61,31 @@ def bessel(x,sigma,sqrz):
 	else:
 		return 0
 
+#priors on unknown parameters
+#------------Sigma & Nb -----------------------------------------------------------------------------------------------------------------------------------------------------
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+'''
+sigma   = pymc.Lognormal('sigma',   mu=log(exp_sigma), tau=1000, value=log(exp_sigma+.001))
+nb      = pymc.Lognormal('nb',      mu=log(exp_nb),    tau=1000, value=log(exp_nb))
+
+@pymc.deterministic
+def es(s=sigma):
+	return exp(s)
+
+@pymc.deterministic
+def enb(nb=nb):
+	return exp(nb)
+
+@pymc.deterministic
+def ed(s=es,nb=enb):
+	return nb/(2.0*k*s*s*pi)
 
 #deterministic function to calculate pIBD from Wright Malecot formula
 @pymc.deterministic(plot=False)
-def Phi(nb=enb,s=sigma,g0=g0,data=data,dist=dist,sz=sz,N_dc=N_dc,tsz=tsz,fbar=fbar,plog=plog,sqrz=sqrz): #g0,data,dist,sz,N_dc,tsz,fbar,plog,sqrz,
-	'''return a vector phi'''
+def Phi(s=es,nb=enb,g0=g0,data=data,dist=dist,sz=sz,N_dc=N_dc,tsz=tsz,fbar=fbar,plog=plog,sqrz=sqrz): #g0,data,dist,sz,N_dc,tsz,fbar,plog,sqrz,
 	phi = np.zeros((N_dc))
 	phi_bar = 0
-	#denom = k*pi*s*s*(d/A)*2.0+g0
 	denom = nb+g0
 	split = len(data)
 	for i in range(N_dc):
@@ -111,9 +108,123 @@ def Phi(nb=enb,s=sigma,g0=g0,data=data,dist=dist,sz=sz,N_dc=N_dc,tsz=tsz,fbar=fb
 	r = (phi - phi_bar)/(1.0 - phi_bar)
 	pIBD = fbar + (1.0-fbar) * r
 	return pIBD
+'''
+#___________________________________________________________________________________________________________________________________________________________________
+#___________________________________________________________________________________________________________________________________________________________________
+
+#------------Density & Nb-------------------------------------------------------------------------------------------------------------------------------------------
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#'''
+nb      = pymc.Lognormal('nb',      mu=log(exp_nb), tau=1000, value=log(exp_nb))
+density = pymc.Lognormal('density', mu=0,           tau=1000,    value=0.001)
+
+@pymc.deterministic
+def enb(nb=nb):
+	return exp(nb)
+
+@pymc.deterministic
+def ed(d=density):
+	return exp(d)
+
+@pymc.deterministic
+def es(nb=enb,d=ed):
+	return sqrt(nb/(2.0*k*pi*d))
 
 
+#deterministic function to calculate pIBD from Wright Malecot formula
+@pymc.deterministic(plot=False)
+def Phi(nb=enb,s=es,g0=g0,data=data,dist=dist,sz=sz,N_dc=N_dc,tsz=tsz,fbar=fbar,plog=plog,sqrz=sqrz): #g0,data,dist,sz,N_dc,tsz,fbar,plog,sqrz,
+	phi = np.zeros((N_dc))
+	phi_bar = 0
+	#denom = nb+g0
+	denom = nb + g0
+	'''
+	split = len(data)
+	for i in range(N_dc):
+		if dist[i]>6*s:
+			split = i
+			break
+	for sss in xrange(split):
+		if dist[sss] == 0:
+			p = g0/denom
+		else:
+			p = t_series(dist[sss],s,plog)/denom
+		phi_bar += p*sz[sss]
+		phi[sss] = p
+	for lll in range(split,N_dc):
+		p = bessel(dist[lll],s,sqrz)/denom
+		phi_bar += p*sz[lll]
+		phi[lll] = p
+	'''
+	for iii in xrange(N_dc):
+		if dist[iii] == 0:
+			p = g0/denom
+		else:
+			p = sy.nsum(lambda t: exp(-2*mu*t)*exp(-(dist[iii]*dist[iii])/(4.0*s*s*t))/(2.0*t), [1,sy.inf],error=False,verbose=False,method='euler-maclaurin')
+			p = p/denom
+		phi_bar += p*sz[iii]
+		phi[iii] = p
+	phi_bar /= float(tsz)
 
+	r = (phi - phi_bar)/(1.0 - phi_bar)
+	pIBD = fbar + (1.0-fbar) * r
+	return pIBD
+#'''
+#___________________________________________________________________________________________________________________________________________________________________
+#___________________________________________________________________________________________________________________________________________________________________
+
+#------------Density & Sigma ---------------------------------------------------------------------------------------------------------------------------------------
+#*******************************************************************************************************************************************************************
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+'''
+density = pymc.Lognormal('density', mu=0,              tau=1,    value=0.001)
+sigma   = pymc.Lognormal('sigma',   mu=log(exp_sigma), tau=0.01, value=log(exp_sigma))
+
+@pymc.deterministic
+def ed(d=density):
+	return exp(d)
+
+@pymc.deterministic
+def es(s=sigma):
+	return exp(s)
+
+@pymc.deterministic
+def nb(d=ed,s=es):
+	return 2*pi*s*s*d
+
+
+#deterministic function to calculate pIBD from Wright Malecot formula
+@pymc.deterministic(plot=False)
+def Phi(s=es,d=ed,g0=g0,data=data,dist=dist,sz=sz,N_dc=N_dc,tsz=tsz,fbar=fbar,plog=plog,sqrz=sqrz): #g0,data,dist,sz,N_dc,tsz,fbar,plog,sqrz,
+	phi = np.zeros((N_dc))
+	phi_bar = 0
+	denom = 2.0*k*pi*s*s*d+g0
+	split = len(data)
+	for i in range(N_dc):
+		if dist[i]>6*s:
+			split = i
+			break
+	for sss in xrange(split):
+		if dist[sss] == 0:
+			p = g0/denom
+		else:
+			p = t_series(dist[sss],s,plog)/denom
+		phi_bar += p*sz[sss]
+		phi[sss] = p
+	for lll in range(split,N_dc):
+		p = bessel(dist[lll],s,sqrz)/denom
+		phi_bar += p*sz[lll]
+		phi[lll] = p
+	phi_bar /= float(tsz)
+
+	r = (phi - phi_bar)/(1.0 - phi_bar)
+	pIBD = fbar + (1.0-fbar) * r
+	return pIBD
+
+'''
+#___________________________________________________________________________________________________________________________________________________________________
+#___________________________________________________________________________________________________________________________________________________________________
 
 #Marginal Likelihoods
 Li = np.empty(N_dc, dtype=object)
