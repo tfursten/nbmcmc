@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import threading
+import multiprocessing
 import argparse
 import numpy as np
 import concurrent.futures
@@ -85,6 +86,18 @@ def run(mc_object, it, burn, thin, outfile, plot, rep):
     mc_object.run_model(it, burn, thin, outfile, plot)
 
 
+jobs = []
+for i in range(args.max):
+    p = multiprocessing.Process(target=run,
+                                args=(reps[i], args.iter,
+                                      args.burn, args.thin,
+                                      args.outfile, args.plot, i))
+    jobs.append(p)
+    p.start()
+
+
+
+'''
 with concurrent.futures.ThreadPoolExecutor(max_workers=args.max) as executor:
     future_to_run = {executor.submit(run, reps[thr], args.iter,
                                      args.burn, args.thin,
@@ -93,7 +106,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=args.max) as executor:
                      thr in xrange(len(reps))}
     for future in concurrent.futures.as_completed(future_to_run):
         thr = future_to_run[future]
-
+'''
 
 '''
 threads = []
