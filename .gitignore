@@ -1,2 +1,7 @@
-nbmcmc
-polylog/*.a
+*Data*.txt
+*.csv
+*.pickle
+parameters.txt
+.ipynb_checkpoints/*
+*.pyc
+*.png

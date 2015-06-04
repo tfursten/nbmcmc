@@ -1,5 +1,4 @@
 from math import *
-import os
 import numpy as np
 import sympy.mpmath as sy
 import scipy.misc as fac
@@ -33,13 +32,9 @@ class NbMC:
                               for i in xrange(n_terms)])
         self.n_terms = n_terms
         self.s_prior_mu = sigma_start
-        self.s_prior_tau = 0.01
+        self.s_prior_tau = 1
         self.d_prior_mu = density_start
-        self.d_prior_tau = 0.01
-        print "Fbar:", self.fbar
-        print "Data:", self.data
-        print "Dists:", self.dist
-        print "Size:", self.sz
+        self.d_prior_tau = 1
 
     def set_prior_params(self, s_mu, s_tau, d_mu, d_tau):
         self.s_prior_mu = s_mu
@@ -112,26 +107,33 @@ class NbMC:
         return sp.k0(t)
 
     def make_model(self):
-        sigma = pymc.Lognormal('sigma', mu=exp(self.s_prior_mu),
-                               tau=self.s_prior_tau, value=exp(self.s_start))
-        density = pymc.Lognormal('density', mu=exp(self.d_prior_mu),
-                                 tau=self.d_prior_tau, value=exp(self.d_start))
+        # sigma = pymc.Lognormal('sigma', mu=exp(self.s_prior_mu),
+        #                       tau=self.s_prior_tau, value=exp(self.s_start))
+        # density = pymc.Lognormal('density', mu=exp(self.d_prior_mu),
+        #                         tau=self.d_prior_tau,
+        #                         value=exp(self.d_start))
+        sigma = pymc.TruncatedNormal('sigma', self.s_prior_mu,
+                                     self.s_prior_tau, 2 ** (-52),
+                                     np.inf)
+        density = pymc.TruncatedNormal('density', self.d_prior_mu,
+                                       self.d_prior_tau, 2 ** (-52),
+                                       np.inf)
+
+        #@pymc.deterministic
+        # def ed(d=density):
+        #    return log(d)
+
+        #@pymc.deterministic
+        # def es(s=sigma):
+        #    return log(s)
 
         @pymc.deterministic
-        def ed(d=density):
-            return log(d)
-
-        @pymc.deterministic
-        def es(s=sigma):
-            return log(s)
-
-        @pymc.deterministic
-        def enb(d=ed, s=es):
+        def enb(s=sigma, d=density):
             return 2 * pi * s * s * d
 
         # deterministic function to calculate pIBD from Wright Malecot formula
         @pymc.deterministic(plot=False)
-        def Phi(s=es, d=ed):
+        def Phi(s=sigma, d=density):
             phi = np.zeros((self.ndc))
             phi_bar = 0
             denom = 2.0 * self.k * pi * s * s * d + self.g0
@@ -175,22 +177,23 @@ class NbMC:
 
         return locals()
 
-    def run_model(self, iter, burn, thin, outfile, plot):
+    def run_model(self, it, burn, thin, outfile, plot):
         M = pymc.Model(self.make_model())
         S = pymc.MCMC(
-            M, db='pickle', calc_deviance=False, dbname=outfile+".pickle")
-        S.sample(iter=iter, burn=burn, thin=thin)
-        S.trace('es')[:]
-        S.trace('ed')[:]
+            M, db='pickle', calc_deviance=False,
+            dbname=outfile + ".pickle")
+        S.sample(iter=it, burn=burn, thin=thin)
+        S.trace('sigma')[:]
+        S.trace('density')[:]
         S.trace('enb')[:]
         # S.trace('Lsim')[:]
         # for i in xrange(self.ndc):
         # S.trace('Lsim_%d' % i)[:]
         # S.Lsim.summary()
-        S.es.summary()
-        S.ed.summary()
+        S.sigma.summary()
+        S.density.summary()
         S.enb.summary()
-        S.write_csv(outfile, variables=["es", "enb", "ed"])
+        S.write_csv(outfile, variables=["sigma", "density", "enb"])
         S.stats()
         if plot:
             pymc.Matplot.plot(S)
