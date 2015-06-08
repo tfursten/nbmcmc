@@ -1,10 +1,7 @@
 #!/usr/bin/env python
-import threading
-import multiprocessing
 import argparse
 import numpy as np
 import pymc
-import concurrent.futures
 from Nbmcmc import *
 
 
@@ -44,9 +41,6 @@ parser.add_argument(
 parser.add_argument(
     "-th", "--thin", default=1, type=int,
     help="thin the MCMC chains")
-parser.add_argument(
-    "--max", default=20, type=int,
-    help="maximum number of worker threads")
 parser.add_argument(
     "-ait", "--adj_iter", default=10000, type=int,
     help="number of adjustment MCMC iterations")
@@ -118,17 +112,6 @@ def run(mc_object, it, burn, thin, outfile, plot, rep):
 for i, r in enumerate(reps):
     run(r, args.adj_iter, args.adj_burn, args.adj_thin,
         args.outfile, args.plot, i)
-
-'''
-with concurrent.futures.ProcessPoolExecutor(max_workers=args.n_reps) as executor:
-    future_to_run = {executor.submit(run, reps[thr], args.adj_iter,
-                                     args.adj_burn, args.adj_thin,
-                                     args.outfile, args.plot,
-                                     thr): thr for
-                     thr in xrange(args.n_reps)}
-    for future in concurrent.futures.as_completed(future_to_run):
-        thr = future_to_run[future]
-'''
 
 adj_sigma = np.empty(0)
 adj_density = np.empty(0)
