@@ -60,7 +60,7 @@ param = open("parameters.txt", 'w')
 param.write(s)
 param.close()
 
-
+'''
 data = np.array(np.genfromtxt(args.infile, delimiter=",", dtype=int))
 data = data[0]
 dist = np.array([i + 1 for i in xrange(len(data))])
@@ -97,13 +97,13 @@ while end <= len(data):
                                           args.outfile, args.plot, i))
         jobs.append(p)
         p.start()
-    jobs.join()
+    [j.join() for j in jobs]
     start = end
     end += args.max
     if end < len(data):
         end = len(data)
 
-
+'''
 
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=args.max) as executor:
@@ -114,9 +114,9 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=args.max) as executor:
                      thr in xrange(len(reps))}
     for future in concurrent.futures.as_completed(future_to_run):
         thr = future_to_run[future]
+'''
 
-
-
+'''
 threads = []
 for thr in xrange(len(data)):
     t = threading.Thread(target=run,

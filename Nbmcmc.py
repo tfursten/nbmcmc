@@ -1,5 +1,6 @@
 from math import *
 import numpy as np
+import shutil
 import sympy.mpmath as sy
 import scipy.misc as fac
 import scipy.special as sp
@@ -106,18 +107,22 @@ class NbMC:
         t = (x / float(sigma)) * self.sqrz
         return sp.k0(t)
 
-    def make_model(self):
+    def make_model(self, data=None):
         # sigma = pymc.Lognormal('sigma', mu=exp(self.s_prior_mu),
         #                       tau=self.s_prior_tau, value=exp(self.s_start))
         # density = pymc.Lognormal('density', mu=exp(self.d_prior_mu),
         #                         tau=self.d_prior_tau,
         #                         value=exp(self.d_start))
-        sigma = pymc.TruncatedNormal('sigma', self.s_prior_mu,
-                                     self.s_prior_tau, 2 ** (-52),
-                                     np.inf)
-        density = pymc.TruncatedNormal('density', self.d_prior_mu,
-                                       self.d_prior_tau, 2 ** (-52),
-                                       np.inf)
+        sigma = pymc.TruncatedNormal('sigma', value=self.s_start,
+                                     mu=self.s_prior_mu,
+                                     tau=self.s_prior_tau,
+                                     a=2 ** (-52),
+                                     b=np.inf)
+        density = pymc.TruncatedNormal('density', value=self.d_start,
+                                       mu=self.d_prior_mu,
+                                       tau=self.d_prior_tau,
+                                       a=2 ** (-52),
+                                       b=np.inf)
 
         #@pymc.deterministic
         # def ed(d=density):
@@ -168,32 +173,42 @@ class NbMC:
         # Marginal Likelihoods
         Li = np.empty(self.ndc, dtype=object)
         Lsim = np.empty(self.ndc, dtype=object)
-        Li = pymc.Container(
-            [pymc.Binomial('Li_%d' % i, n=self.sz[i],
-                           p=Phi[i], observed=True,
-                           value=self.data[i]) for i in xrange(self.ndc)])
-        Lsim = pymc.Container([pymc.Binomial('Lsim_%d' % i, n=self.sz[i],
-                                             p=Phi[i])])
+        if data is None:
+            Li = pymc.Container(
+                [pymc.Binomial('Li_%d' % i, n=self.sz[i],
+                               p=Phi[i], observed=True,
+                               value=self.data[i]) for i in xrange(self.ndc)])
+        else:
+            Li = pymc.Container(
+                [pymc.Binomial('Li_%i' % i, n=self.sz[i],
+                               p=Phi[i], observed=True,
+                               value=data) for i in xrange(self.ndc)])
+
+        Lsim = pymc.Container([pymc.Binomial('Lsim_%i' % i,
+                                             n=self.sz[i],
+                                             p=Phi[i]) for i
+                               in xrange(self.ndc)])
 
         return locals()
 
-    def run_model(self, it, burn, thin, outfile, plot):
+    def run_model(self, it, burn, thin, outfile, plot, nAdj=10):
+        dbname = outfile + ".pickle"
         M = pymc.Model(self.make_model())
         S = pymc.MCMC(
             M, db='pickle', calc_deviance=False,
-            dbname=outfile + ".pickle")
+            dbname=dbname)
         S.sample(iter=it, burn=burn, thin=thin)
         S.trace('sigma')[:]
         S.trace('density')[:]
         S.trace('enb')[:]
-        # S.trace('Lsim')[:]
-        # for i in xrange(self.ndc):
-        # S.trace('Lsim_%d' % i)[:]
-        # S.Lsim.summary()
+        for i in xrange(self.ndc):
+            S.trace('Lsim_%i' % i)[:]
+            S.Lsim[i].summary()
         S.sigma.summary()
         S.density.summary()
         S.enb.summary()
-        S.write_csv(outfile, variables=["sigma", "density", "enb"])
+        reps = ['Lsim_%i' % i for i in xrange(self.ndc)]
+        S.write_csv(outfile, variables=["sigma", "density", "enb"] + reps)
         S.stats()
         if plot:
             pymc.Matplot.plot(S)
