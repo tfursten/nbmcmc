@@ -114,6 +114,12 @@ def run(mc_object, it, burn, thin, outfile, plot, rep):
     outfile = outfile + str(args.line) + "_" + str(rep)
     mc_object.run_model(it, burn, thin, outfile, plot)
 
+
+for i, r in enumerate(reps):
+    run(r, args.adj_iter, args.adj_burn, args.adj_thin,
+        args.outfile, args.plot, i)
+
+'''
 with concurrent.futures.ProcessPoolExecutor(max_workers=args.n_reps) as executor:
     future_to_run = {executor.submit(run, reps[thr], args.adj_iter,
                                      args.adj_burn, args.adj_thin,
@@ -122,6 +128,7 @@ with concurrent.futures.ProcessPoolExecutor(max_workers=args.n_reps) as executor
                      thr in xrange(args.n_reps)}
     for future in concurrent.futures.as_completed(future_to_run):
         thr = future_to_run[future]
+'''
 
 adj_sigma = np.empty(0)
 adj_density = np.empty(0)
