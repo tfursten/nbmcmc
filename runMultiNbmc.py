@@ -3,7 +3,6 @@ import threading
 import multiprocessing
 import argparse
 import numpy as np
-import concurrent.futures
 from Nbmcmc import *
 
 
@@ -41,8 +40,11 @@ parser.add_argument(
     "-p", "--plot", action="store_true",
     help="output plots")
 parser.add_argument(
-    "--max", default=20, type=int,
-    help="maximum number of worker threads")
+    "-m", "--n_markers", default=5, type=int,
+    help="number of markers")
+parser.add_argument(
+    "-n", "--n_ind", default=100, type=int,
+    help="number of individuals per distance class")
 
 args = parser.parse_args()
 # TODO parse different types of data files
@@ -73,7 +75,9 @@ nbmc.run_model(args.iter, args.burn, args.thin, args.outfile, args.plot)
 '''
 data = np.array(np.genfromtxt(args.infile, delimiter=",", dtype=int))
 dist = np.array([i + 1 for i in xrange(len(data[0]))])
-sz = np.array([100 for i in xrange(len(data[0]))])
+sz = [args.n_ind for i in xrange(len(data[0]) - 1)]
+sz.append(args.n_ind / 2)
+sz = np.array(sz)
 
 
 reps = np.array([NbMC(args.mu, args.ploidy, args.sigma_start,
@@ -82,47 +86,12 @@ reps = np.array([NbMC(args.mu, args.ploidy, args.sigma_start,
 
 
 def run(mc_object, it, burn, thin, outfile, plot, rep):
-    outfile = outfile + str(rep)
+    outfile = outfile + "%.3d" % rep
     mc_object.run_model(it, burn, thin, outfile, plot)
 
 
-start = 0
-end = args.max
-while end <= len(data):
-    jobs = []
-    for i in range(start, end):
-        p = multiprocessing.Process(target=run,
-                                    args=(reps[i], args.iter,
-                                          args.burn, args.thin,
-                                          args.outfile, args.plot, i))
-        jobs.append(p)
-        p.start()
-    [j.join() for j in jobs]
-    start = end
-    end += args.max
-    if end < len(data):
-        end = len(data)
-
-'''
-
-
-with concurrent.futures.ThreadPoolExecutor(max_workers=args.max) as executor:
-    future_to_run = {executor.submit(run, reps[thr], args.iter,
-                                     args.burn, args.thin,
-                                     args.outfile, args.plot,
-                                     thr): thr for
-                     thr in xrange(len(reps))}
-    for future in concurrent.futures.as_completed(future_to_run):
-        thr = future_to_run[future]
-'''
-
-'''
-threads = []
-for thr in xrange(len(data)):
-    t = threading.Thread(target=run,
-                         args=(reps[thr], args.iter,
-                               args.burn, args.thin,
-                               args.outfile, args.plot, thr))
-    threads.append(t)
-    t.start()
-'''
+for i, line in enumerate(data):
+    nbmc = NbMC(args.mu, args.ploidy, args.sigma_start,
+                args.density_start, line, dist, sz,
+                args.n_terms)
+    run(nbmc, args.iter, args.burn, args.thin, args.outfile, args.plot, i)
