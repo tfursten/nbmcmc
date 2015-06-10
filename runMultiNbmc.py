@@ -75,8 +75,8 @@ nbmc.run_model(args.iter, args.burn, args.thin, args.outfile, args.plot)
 '''
 data = np.array(np.genfromtxt(args.infile, delimiter=",", dtype=int))
 dist = np.array([i + 1 for i in xrange(len(data[0]))])
-sz = [args.n_ind for i in xrange(len(data[0]) - 1)]
-sz.append(args.n_ind / 2)
+sz = [args.n_ind*args.n_markers for i in xrange(len(data[0]) - 1)]
+sz.append((args.n_ind / 2)*args.n_markers)
 sz = np.array(sz)
 
 
