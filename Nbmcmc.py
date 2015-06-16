@@ -1,6 +1,5 @@
 from math import *
 import numpy as np
-import shutil
 import sympy.mpmath as sy
 import scipy.misc as fac
 import scipy.special as sp
@@ -11,7 +10,7 @@ plt.style.use('ggplot')
 
 class NbMC:
 
-    def __init__(self, mu, ploidy, sigma_start, density_start,
+    def __init__(self, mu, ploidy, nb_start, density_start,
                  data_in, dist_in, size_in, n_terms, data_is_raw=False):
         self.k = ploidy
         self.mu = mu
@@ -19,7 +18,7 @@ class NbMC:
         self.z = exp(self.mu2)
         self.sqrz = sqrt(1.0 - self.z)
         self.g0 = log(1 / float(self.sqrz))
-        self.s_start = sigma_start
+        self.nb_start = nb_start
         self.d_start = density_start
 
         self.ndc = 0
@@ -32,14 +31,14 @@ class NbMC:
         self.plog = np.array([sy.polylog(i + 1, self.z)
                               for i in xrange(n_terms)])
         self.n_terms = n_terms
-        self.s_prior_mu = sigma_start
-        self.s_prior_tau = 1
+        self.nb_prior_mu = nb_start
+        self.nb_prior_tau = 0.01
         self.d_prior_mu = density_start
-        self.d_prior_tau = 1
+        self.d_prior_tau = 0.01
 
-    def set_prior_params(self, s_mu, s_tau, d_mu, d_tau):
-        self.s_prior_mu = s_mu
-        self.s_prior_tau = s_tau
+    def set_prior_params(self, n_mu, n_tau, d_mu, d_tau):
+        self.nb_prior_mu = n_mu
+        self.nb_prior_tau = n_tau
         self.d_prior_mu = d_mu
         self.d_prior_tau = d_tau
 
@@ -108,40 +107,36 @@ class NbMC:
         return sp.k0(t)
 
     def make_model(self, data=None):
-        # sigma = pymc.Lognormal('sigma', mu=exp(self.s_prior_mu),
-        #                       tau=self.s_prior_tau, value=exp(self.s_start))
-        # density = pymc.Lognormal('density', mu=exp(self.d_prior_mu),
-        #                         tau=self.d_prior_tau,
-        #                         value=exp(self.d_start))
-        sigma = pymc.TruncatedNormal('sigma', value=self.s_start,
-                                     mu=self.s_prior_mu,
-                                     tau=self.s_prior_tau,
-                                     a=2 ** (-52),
-                                     b=np.inf)
+        nb = pymc.TruncatedNormal('nb', value=self.nb_start,
+                                  mu=self.nb_prior_mu,
+                                  tau=self.nb_prior_tau,
+                                  a=2 ** (-52),
+                                  b=np.inf)
+
         density = pymc.TruncatedNormal('density', value=self.d_start,
                                        mu=self.d_prior_mu,
                                        tau=self.d_prior_tau,
                                        a=2 ** (-52),
                                        b=np.inf)
 
-        #@pymc.deterministic
-        # def ed(d=density):
-        #    return log(d)
-
-        #@pymc.deterministic
-        # def es(s=sigma):
-        #    return log(s)
+        @pymc.deterministic
+        def sigma(nb=nb, d=density):
+            return sqrt(nb / float(d))
 
         @pymc.deterministic
-        def enb(s=sigma, d=density):
-            return 2 * pi * s * s * d
+        def ss(s=sigma):
+            return s * s
 
+        @pymc.deterministic
+        def neigh(nb=nb):
+            return 2.0 * self.k * nb * pi
         # deterministic function to calculate pIBD from Wright Malecot formula
+
         @pymc.deterministic(plot=False)
-        def Phi(s=sigma, d=density):
+        def Phi(nb=nb, s=sigma):
             phi = np.zeros((self.ndc))
             phi_bar = 0
-            denom = 2.0 * self.k * pi * s * s * d + self.g0
+            denom = 2.0 * self.k * pi * nb + self.g0
             split = self.ndc
             for i in xrange(self.ndc):
                 if self.dist[i] > 6 * s:
@@ -166,23 +161,18 @@ class NbMC:
             if np.any(negative_values):
                 idx = np.where(negative_values == 1)
                 pIBD[idx] = 2 ** (-52)
-                # print("WARNING: pIBD fell below zero"
-                #"for distance classes:", idx)
+                print("WARNING: pIBD fell below zero"
+                      "for distance classes:", idx)
             return pIBD
 
         # Marginal Likelihoods
         Li = np.empty(self.ndc, dtype=object)
         Lsim = np.empty(self.ndc, dtype=object)
-        if data is None:
-            Li = pymc.Container(
-                [pymc.Binomial('Li_%d' % i, n=self.sz[i],
-                               p=Phi[i], observed=True,
-                               value=self.data[i]) for i in xrange(self.ndc)])
-        else:
-            Li = pymc.Container(
-                [pymc.Binomial('Li_%i' % i, n=self.sz[i],
-                               p=Phi[i], observed=True,
-                               value=data) for i in xrange(self.ndc)])
+        Li = pymc.Container(
+            [pymc.Binomial('Li_%i' % i, n=self.sz[i],
+                           p=Phi[i], observed=True,
+                           value=self.data[i])
+             for i in xrange(self.ndc)])
 
         Lsim = pymc.Container([pymc.Binomial('Lsim_%i' % i,
                                              n=self.sz[i],
@@ -198,17 +188,17 @@ class NbMC:
             M, db='pickle', calc_deviance=False,
             dbname=dbname)
         S.sample(iter=it, burn=burn, thin=thin)
-        S.trace('sigma')[:]
-        S.trace('density')[:]
-        S.trace('enb')[:]
         for i in xrange(self.ndc):
-            S.trace('Lsim_%i' % i)[:]
             S.Lsim[i].summary()
         S.sigma.summary()
+        S.ss.summary()
         S.density.summary()
-        S.enb.summary()
+        S.nb.summary()
+        S.neigh.summary()
         reps = ['Lsim_%i' % i for i in xrange(self.ndc)]
-        S.write_csv(outfile, variables=["sigma", "density", "enb"] + reps)
+        S.write_csv(
+            outfile + ".csv", variables=["sigma", "ss", "density",
+                                         "nb", "neigh"] + reps)
         S.stats()
         if plot:
             pymc.Matplot.plot(S)

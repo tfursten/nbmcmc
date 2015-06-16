@@ -1,11 +1,9 @@
 #!/usr/bin/env python
-import threading
-import multiprocessing
 import argparse
 import numpy as np
-import concurrent.futures
 from Nbmcmc import *
-
+import matplotlib.pyplot as plt
+plt.style.use('ggplot')
 
 parser = argparse.ArgumentParser(
     description="Bayesian Estimation of Neighborhood Size "
@@ -19,15 +17,18 @@ parser.add_argument(
 parser.add_argument(
     "-u", "--mu", default=0.0001, type=float,
     help="mutation rate")
-parser.add_argument("-k", "--ploidy", default=1.0, type=float,
-                    help="ploidy")
 parser.add_argument(
-    "-s", "--sigma_start", default=1.0, type=float,
-    help="starting value for sigma")
-parser.add_argument("-d", "--density_start", default=1.0,
-                    type=float, help="starting value for density")
-parser.add_argument("-t", "--n_terms", default=30,
-                    type=int, help="number of terms for taylor series")
+    "-k", "--ploidy", default=1.0, type=float,
+    help="ploidy")
+parser.add_argument(
+    "-nb", "--nb_start", default=1.0, type=float,
+    help="starting value for Neighborhood Size")
+parser.add_argument(
+    "-d", "--density_start", default=1.0,
+    type=float, help="starting value for density")
+parser.add_argument(
+    "-t", "--n_terms", default=30, type=int,
+    help="number of terms for taylor series")
 parser.add_argument(
     "-it", "--iter", default=10000, type=int,
     help="number of MCMC iterations")
@@ -41,19 +42,40 @@ parser.add_argument(
     "-p", "--plot", action="store_true",
     help="output plots")
 parser.add_argument(
-    "--max", default=20, type=int,
-    help="maximum number of worker threads")
-
+    "-m", "--n_markers", required=True, type=int,
+    help="number of markers")
+parser.add_argument(
+    "-n", "--n_ind", default=100, type=int,
+    help="number of pairs per distance class")
+parser.add_argument(
+    "--nb_mu", default=1.0, type=float,
+    help="mean for truncated normal neighborhood size prior")
+parser.add_argument(
+    "--nb_tau", default=0.01, type=float,
+    help="precision for truncated normal neighborhood size prior")
+parser.add_argument(
+    "--d_mu", default=1.0, type=float,
+    help="mean for density truncated normal prior")
+parser.add_argument(
+    "--d_tau", default=0.01, type=float,
+    help="precision for density truncated normal prior")
+parser.add_argument(
+    "-l", "--line", default=0, type=int,
+    help="line of file with data")
 args = parser.parse_args()
+
 # TODO parse different types of data files
 mcmctot = args.iter / args.thin
 s = str("Outfile: {}\nInfile: {}\nMu: {}\nPloidy: {}\n"
-        "Sigma Start: {}\nDensity Start: {}\n"
+        "Nb Start: {}\nDensity Start: {}\n"
+        "Nb Mu: {}\nNb Tau: {}\nDensity Mu: {}\n"
+        "Density Tau: {}\n"
         "Taylor Series Terms: {}\nMCMC iterations: {}\n"
         "MCMC burn: {}\nMCMC thin: {}\n"
         "MCMC total: {}").format(args.outfile, args.infile, args.mu,
-                                 args.ploidy, args.sigma_start,
-                                 args.density_start, args.n_terms,
+                                 args.ploidy, args.nb_start,
+                                 args.density_start, args.nb_mu, args.nb_tau,
+                                 args.d_mu, args.d_tau, args.n_terms,
                                  args.iter, args.burn, args.thin, mcmctot)
 print(s)
 param = open("parameters.txt", 'w')
@@ -62,67 +84,41 @@ param.close()
 
 
 data = np.array(np.genfromtxt(args.infile, delimiter=",", dtype=int))
-data = data[0]
-dist = np.array([i + 1 for i in xrange(len(data))])
-sz = np.array([100 for i in xrange(len(data))])
-nbmc = NbMC(args.mu, args.ploidy, args.sigma_start,
+#data = data[args.line]
+ndc = len(data)
+dist = np.array([i + 1 for i in xrange(ndc)])
+sz = [args.n_ind * args.n_markers for i in xrange(ndc - 1)]
+sz.append(args.n_ind / 2 * args.n_markers)
+sz = np.array(sz)
+
+nbmc = NbMC(args.mu, args.ploidy, args.nb_start,
             args.density_start, data, dist, sz,
             args.n_terms)
-nbmc.run_model(args.iter, args.burn, args.thin, args.outfile, args.plot)
+nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
+nbmc.run_model(
+    args.iter, args.burn, args.thin, args.outfile + str(args.line), args.plot)
+sz = np.array(sz, dtype=float)
+data = np.divide(data, sz)
 
-'''
-data = np.array(np.genfromtxt(args.infile, delimiter=",", dtype=int))
-dist = np.array([i + 1 for i in xrange(len(data[0]))])
-sz = np.array([100 for i in xrange(len(data[0]))])
-
-
-reps = np.array([NbMC(args.mu, args.ploidy, args.sigma_start,
-                      args.density_start, data[i], dist, sz,
-                      args.n_terms) for i in xrange(len(data))], dtype=object)
-
-
-def run(mc_object, it, burn, thin, outfile, plot, rep):
-    outfile = outfile + str(rep)
-    mc_object.run_model(it, burn, thin, outfile, plot)
-
-
-start = 0
-end = args.max
-while end <= len(data):
-    jobs = []
-    for i in range(start, end):
-        p = multiprocessing.Process(target=run,
-                                    args=(reps[i], args.iter,
-                                          args.burn, args.thin,
-                                          args.outfile, args.plot, i))
-        jobs.append(p)
-        p.start()
-    jobs.join()
-    start = end
-    end += args.max
-    if end < len(data):
-        end = len(data)
-
-
-
-
-with concurrent.futures.ThreadPoolExecutor(max_workers=args.max) as executor:
-    future_to_run = {executor.submit(run, reps[thr], args.iter,
-                                     args.burn, args.thin,
-                                     args.outfile, args.plot,
-                                     thr): thr for
-                     thr in xrange(len(reps))}
-    for future in concurrent.futures.as_completed(future_to_run):
-        thr = future_to_run[future]
-
-
-
-threads = []
-for thr in xrange(len(data)):
-    t = threading.Thread(target=run,
-                         args=(reps[thr], args.iter,
-                               args.burn, args.thin,
-                               args.outfile, args.plot, thr))
-    threads.append(t)
-    t.start()
-'''
+f = open(args.outfile + str(args.line) + ".csv", 'r')
+dist = [i + 1 for i in xrange(50)]
+for i in xrange(6):
+    f.readline()
+upper = []
+lower = []
+means = []
+for line in f:
+    line = line.strip().split(",")
+    means.append(float(line[1]))
+    lower.append(float(line[1]) - float(line[6]))
+    upper.append(float(line[10]) - float(line[1]))
+means = np.divide(np.array(means), sz)
+upper = np.divide(np.array(upper), sz)
+lower = np.divide(np.array(lower), sz)
+plt.clf()
+plt.errorbar(dist, means, yerr=[lower, upper])
+plt.plot(dist, data, 'o')
+plt.ylim(0, 1)
+plt.xlim(0, 51)
+plt.savefig(args.outfile + str(args.line) + ".png")
+# plt.show()
