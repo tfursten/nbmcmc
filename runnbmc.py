@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import time
 import numpy as np
 from Nbmcmc import *
 import matplotlib.pyplot as plt
@@ -27,7 +28,7 @@ parser.add_argument(
     "-d", "--density_start", default=1.0,
     type=float, help="starting value for density")
 parser.add_argument(
-    "-t", "--n_terms", default=30, type=int,
+    "-t", "--n_terms", default=34, type=int,
     help="number of terms for taylor series")
 parser.add_argument(
     "-it", "--iter", default=10000, type=int,
@@ -42,27 +43,24 @@ parser.add_argument(
     "-p", "--plot", action="store_true",
     help="output plots")
 parser.add_argument(
-    "-m", "--n_markers", required=True, type=int,
-    help="number of markers")
-parser.add_argument(
     "-n", "--n_ind", default=100, type=int,
     help="number of pairs per distance class")
 parser.add_argument(
     "--nb_mu", default=1.0, type=float,
     help="mean for truncated normal neighborhood size prior")
 parser.add_argument(
-    "--nb_tau", default=0.01, type=float,
+    "--nb_tau", default=0.001, type=float,
     help="precision for truncated normal neighborhood size prior")
 parser.add_argument(
     "--d_mu", default=1.0, type=float,
     help="mean for density truncated normal prior")
 parser.add_argument(
-    "--d_tau", default=0.01, type=float,
+    "--d_tau", default=0.001, type=float,
     help="precision for density truncated normal prior")
-parser.add_argument(
-    "-l", "--line", default=0, type=int,
-    help="line of file with data")
 args = parser.parse_args()
+
+
+start_time = time.time()
 
 # TODO parse different types of data files
 mcmctot = args.iter / args.thin
@@ -80,28 +78,37 @@ s = str("Outfile: {}\nInfile: {}\nMu: {}\nPloidy: {}\n"
 print(s)
 param = open("parameters.txt", 'w')
 param.write(s)
-param.close()
 
 
 data = np.array(np.genfromtxt(args.infile, delimiter=",", dtype=int))
-#data = data[args.line]
-ndc = len(data)
-dist = np.array([i + 1 for i in xrange(ndc)])
-sz = [args.n_ind * args.n_markers for i in xrange(ndc - 1)]
-sz.append(args.n_ind / 2 * args.n_markers)
-sz = np.array(sz)
+if len(data) == 1:
+    data = np.array(data)
+# data = data[args.line]
+ndc = len(data[0])
+nreps = len(data)
+dist = np.tile([i + 1 for i in xrange(ndc)], (nreps, 1))
+sz = [args.n_ind for i in xrange(ndc)]
+sz = np.tile(np.array(sz), (nreps, 1))
+# sz = [args.n_ind * args.n_markers for i in xrange(ndc)]
+# sz.append(args.n_ind / 2 * args.n_markers)
+
 
 nbmc = NbMC(args.mu, args.ploidy, args.nb_start,
             args.density_start, data, dist, sz,
             args.n_terms)
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
-nbmc.run_model(
-    args.iter, args.burn, args.thin, args.outfile + str(args.line), args.plot)
-sz = np.array(sz, dtype=float)
-data = np.divide(data, sz)
+hoDIC, haDIC = nbmc.run_model(
+    args.iter, args.burn, args.thin, args.outfile, args.plot)
 
-f = open(args.outfile + str(args.line) + ".csv", 'r')
-dist = [i + 1 for i in xrange(50)]
+end_time = time.time() - start_time
+param.write("Run Time:" + str(end_time) + "\n")
+
+sz = np.array(sz, dtype=float)
+pdata = np.divide(data, sz)
+
+f = open(args.outfile + ".csv", 'r')
+dist = [i + 1 for i in xrange(ndc)]
+
 for i in xrange(6):
     f.readline()
 upper = []
@@ -112,13 +119,31 @@ for line in f:
     means.append(float(line[1]))
     lower.append(float(line[1]) - float(line[6]))
     upper.append(float(line[10]) - float(line[1]))
+
+means = np.array(means).reshape(nreps, ndc)
+upper = np.array(upper).reshape(nreps, ndc)
+lower = np.array(lower).reshape(nreps, ndc)
+
 means = np.divide(np.array(means), sz)
 upper = np.divide(np.array(upper), sz)
 lower = np.divide(np.array(lower), sz)
+
 plt.clf()
-plt.errorbar(dist, means, yerr=[lower, upper])
-plt.plot(dist, data, 'o')
-plt.ylim(0, 1)
-plt.xlim(0, 51)
-plt.savefig(args.outfile + str(args.line) + ".png")
+
+fig, ax = plt.subplots(nreps, 1, sharex=True, figsize=(5, 2 * nreps))
+fig.tight_layout()
+for i in xrange(nreps):
+    ax[i].errorbar(dist, means[i], yerr=[lower[i], upper[i]])
+    ax[i].plot(dist, pdata[i], 'o')
+    ax[i].set_ylim(-0.1, 1.1)
+    ax[i].set_xlim(0, ndc + 1)
+plt.savefig(args.outfile + str(i) + ".png")
+
+out = open(args.outfile + ".csv", 'a')
+out.write("Null Hypothesis DIC," + str(hoDIC)+"\n")
+out.write("Alternative Hypothesis DIC," + str(haDIC)+"\n")
+out.write("Difference," + str(abs(hoDIC - haDIC))+"\n")
 # plt.show()
+f.close()
+param.close()
+out.close()

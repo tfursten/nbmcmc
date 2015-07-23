@@ -26,7 +26,7 @@ parser.add_argument(
     "-d", "--density_start", default=1.0,
     type=float, help="starting value for density")
 parser.add_argument(
-    "-t", "--n_terms", default=30, type=int,
+    "-t", "--n_terms", default=34, type=int,
     help="number of terms for taylor series")
 parser.add_argument(
     "-it", "--iter", default=10000, type=int,
@@ -44,19 +44,19 @@ parser.add_argument(
     "-m", "--n_markers", required=True, type=int,
     help="number of markers")
 parser.add_argument(
-    "-n", "--n_ind", default=100, type=int,
+    "-n", "--n_ind", default=20, type=int,
     help="number of pairs per distance class")
 parser.add_argument(
     "--nb_mu", default=1.0, type=float,
     help="mean for truncated normal neighborhood size prior")
 parser.add_argument(
-    "--nb_tau", default=0.01, type=float,
+    "--nb_tau", default=0.001, type=float,
     help="precision for truncated normal neighborhood size prior")
 parser.add_argument(
     "--d_mu", default=1.0, type=float,
     help="mean for density truncated normal prior")
 parser.add_argument(
-    "--d_tau", default=0.01, type=float,
+    "--d_tau", default=0.001, type=float,
     help="precision for density truncated normal prior")
 parser.add_argument(
     "-l", "--line", default=0, type=int,
@@ -83,27 +83,29 @@ param.write(s)
 param.close()
 
 
-data = np.array(np.genfromtxt(args.infile, delimiter=",", dtype=int))
-ndc = len(data[0])
-dist = np.array([i + 1 for i in xrange(ndc)])
-sz = [args.n_ind * args.n_markers for i in xrange(ndc - 1)]
-sz.append((args.n_ind / 2) * args.n_markers)
+all_data = np.array(np.genfromtxt(args.infile, delimiter=",", dtype=int))
+ndc = len(all_data[0])
+nreps = len(all_data) / args.n_markers
+dist = np.tile([i + 1 for i in xrange(ndc)], (nreps, 1))
+sz = [args.n_ind for i in xrange(ndc)]
 sz = np.array(sz)
-
-
-reps = np.array([NbMC(args.mu, args.ploidy, args.nb_start,
-                      args.density_start, data, dist, sz,
-                      args.n_terms) for i in xrange(len(data))], dtype=object)
+sz = np.tile(np.array(sz), (nreps, 1))
 
 
 def run(mc_object, it, burn, thin, outfile, plot, rep):
     outfile = outfile + "%.3d" % rep
-    mc_object.run_model(it, burn, thin, outfile, plot)
+    ho, ha = mc_object.run_model(it, burn, thin, outfile, plot)
+    out = open(outfile + ".csv", 'a')
+    out.write("Null Hypothesis DIC," + str(hoDIC) + "\n")
+    out.write("Alternative Hypothesis DIC," + str(haDIC) + "\n")
+    out.write("Difference," + str(abs(hoDIC - haDIC)))
+    out.close()
 
-
-for i, line in enumerate(data):
+idx = 0
+for i in xrange(nreps):
     nbmc = NbMC(args.mu, args.ploidy, args.nb_start,
-                args.density_start, data, dist, sz,
-                args.n_terms)
+                args.density_start, all_data[idx:idx + args.n_markers],
+                dist, sz, args.n_terms)
     nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
     run(nbmc, args.iter, args.burn, args.thin, args.outfile, args.plot, i)
+    idx += args.nmarkers
