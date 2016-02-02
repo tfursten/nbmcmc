@@ -12,8 +12,8 @@ class NbMC:
 
     def __init__(self, mu, ploidy, nb_start, density_start,
                  data_in, dist_in, size_in, n_terms, data_is_raw=False):
-        self.k = ploidy
         self.mu = mu
+        self.k = ploidy
         self.mu2 = -2.0 * self.mu
         self.z = exp(self.mu2)
         self.sqrz = sqrt(1.0 - self.z)
@@ -74,13 +74,14 @@ class NbMC:
             #self.sort_data(newData, dc, sz)
             self.data = newData
             self.dist = dc
-            self.sz = sz
+            self.sz = np.multiply(sz, self.k**2)
             self.dist2 = self.dist ** 2
             self.tsz = np.sum(self.sz[0])
             self.ndc = len(self.dist[0])
             self.fbar = np.array(
                 [np.sum(d) / float(self.tsz) for d in self.data])
             self.nreps = len(self.data)
+            print self.nreps
         else:
             raise Exception(
                 "ERROR: data and distance class arrays are not equal length")
@@ -126,7 +127,7 @@ class NbMC:
 
         @pymc.deterministic
         def neigh(nb=nb):
-            return 2.0 * self.k * nb * pi
+            return 4.0 * nb * pi
 
         # deterministic function to calculate pIBD from Wright Malecot formula
         @pymc.deterministic(plot=False)
@@ -180,14 +181,14 @@ class NbMC:
 
         @pymc.deterministic
         def neigh(nb=nb):
-            return 2.0 * self.k * nb * pi
+            return 4.0 * nb * pi
 
         # deterministic function to calculate pIBD from Wright Malecot formula
         @pymc.deterministic(plot=False)
         def Phi(nb=nb, s=sigma):
             phi = np.zeros((self.ndc))
             phi_bar = 0
-            denom = 2.0 * self.k * pi * nb + self.g0
+            denom = 4.0 * pi * nb + self.g0
             split = self.ndc
             for i in xrange(self.ndc):
                 if self.dist[0][i] > 5 * s:
@@ -236,7 +237,7 @@ class NbMC:
 
         return locals()
 
-    def run_model(self, it, burn, thin, outfile, plot, nAdj=10):
+    def run_model(self, it, burn, thin, outfile, plot, model_com=False):
         dbname = outfile + ".pickle"
         M = pymc.Model(self.make_model())
         S = pymc.MCMC(
@@ -269,18 +270,19 @@ class NbMC:
             pymc.Matplot.plot(S.sigma)
             #[S.ss, S.neigh, S.density, S.sigma, S.nb,
             # S.lognb, S.logss, S.logs])
-        trace = S.trace("neigh")[:]
-        NM = pymc.Model(self.make_null_model())
-        NS = pymc.MCMC(NM, db='pickle', calc_deviance=True,
-                       dbname=outfile + "_null.pickle")
-        NS.sample(iter=it, burn=burn, thin=thin)
-        pymc.raftery_lewis(trace, q=0.025, r=0.01)
-        haDIC = S.dic
-        hoDIC = NS.dic
-        print "Null Hypothesis DIC:", hoDIC
-        print "Alternative Hypothesis DIC:", haDIC
-        print "Difference:", abs(hoDIC - haDIC)
+        #trace = S.trace("neigh")[:]
+        if model_com:
+            NM = pymc.Model(self.make_null_model())
+            NS = pymc.MCMC(NM, db='pickle', calc_deviance=True,
+                           dbname=outfile + "_null.pickle")
+            NS.sample(iter=it, burn=burn, thin=thin)
+
+            #pymc.raftery_lewis(trace, q=0.025, r=0.01)
+            haDIC = S.stats.dic()
+            hoDIC = NS.stats.dic()
+            com_out = open(outfile + "_model_comp.txt", 'w')
+            com_out.write("Null Hypothesis DIC: " + str(hoDIC) + "\n")
+            com_out.write("Alt Hypothesis DIC: " + str(haDIC) + "\n")
+            NS.db.close()
         # pymc.gelman_rubin(S)
         S.db.close()
-        NS.db.close()
-        return(hoDIC, haDIC)

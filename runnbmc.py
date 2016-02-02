@@ -97,11 +97,12 @@ nbmc = NbMC(args.mu, args.ploidy, args.nb_start,
             args.density_start, data, dist, sz,
             args.n_terms)
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
-hoDIC, haDIC = nbmc.run_model(
-    args.iter, args.burn, args.thin, args.outfile, args.plot)
+nbmc.run_model(
+    args.iter, args.burn, args.thin, args.outfile, args.plot,True)
 
 end_time = time.time() - start_time
 param.write("Run Time:" + str(end_time) + "\n")
+param.close()
 
 sz = np.array(sz, dtype=float)
 pdata = np.divide(data, sz)
@@ -139,11 +140,11 @@ for i in xrange(nreps):
     ax[i].set_xlim(0, ndc + 1)
 plt.savefig(args.outfile + str(i) + ".png")
 
-out = open(args.outfile + ".csv", 'a')
-out.write("Null Hypothesis DIC," + str(hoDIC)+"\n")
-out.write("Alternative Hypothesis DIC," + str(haDIC)+"\n")
-out.write("Difference," + str(abs(hoDIC - haDIC))+"\n")
+#out = open(args.outfile + ".csv", 'a')
+#out.write("Null Hypothesis DIC," + str(hoDIC) + "\n")
+#out.write("Alternative Hypothesis DIC," + str(haDIC) + "\n")
+#ut.write("Difference," + str(abs(hoDIC - haDIC)) + "\n")
 # plt.show()
 f.close()
-param.close()
-out.close()
+
+

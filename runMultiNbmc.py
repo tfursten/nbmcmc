@@ -94,17 +94,17 @@ sz = np.tile(np.array(sz), (nreps, 1))
 
 def run(mc_object, it, burn, thin, outfile, plot, rep):
     outfile = outfile + "%.3d" % rep
-    ho, ha = mc_object.run_model(it, burn, thin, outfile, plot)
-    out = open(outfile + ".csv", 'a')
-    out.write("Null Hypothesis DIC," + str(hoDIC) + "\n")
-    out.write("Alternative Hypothesis DIC," + str(haDIC) + "\n")
-    out.write("Difference," + str(abs(hoDIC - haDIC)))
-    out.close()
+    mc_object.run_model(it, burn, thin, outfile, plot, True)
+    #out = open(outfile + ".csv", 'a')
+    #out.write("Null Hypothesis DIC," + str(hoDIC) + "\n")
+    #out.write("Alternative Hypothesis DIC," + str(haDIC) + "\n")
+    #out.write("Difference," + str(abs(hoDIC - haDIC)))
+    # out.close()
 
 idx = 0
 for i in xrange(nreps):
     nbmc = NbMC(args.mu, args.ploidy, args.nb_start,
-                args.density_start, all_data[idx:idx + args.n_markers],
+                args.density_start, all_data[idx:idx + args.n_markers,:],
                 dist, sz, args.n_terms)
     nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
     run(nbmc, args.iter, args.burn, args.thin, args.outfile, args.plot, i)
