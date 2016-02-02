@@ -184,7 +184,7 @@ class NbMC:
             return 4.0 * nb * pi
 
         # deterministic function to calculate pIBD from Wright Malecot formula
-        @pymc.deterministic(plot=False)
+        @pymc.deterministic(plot=False,trace=False)
         def Phi(nb=nb, s=sigma):
             phi = np.zeros((self.ndc))
             phi_bar = 0
