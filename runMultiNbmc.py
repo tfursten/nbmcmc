@@ -61,6 +61,9 @@ parser.add_argument(
 parser.add_argument(
     "-l", "--line", default=0, type=int,
     help="line of file with data")
+parser.add_argument(
+    "--mod_comp", default=False, type=bool,
+    help="Run DIC for null and alt model")
 args = parser.parse_args()
 
 
@@ -94,7 +97,7 @@ sz = np.tile(np.array(sz), (nreps, 1))
 
 def run(mc_object, it, burn, thin, outfile, plot, rep):
     outfile = outfile + "%.3d" % rep
-    mc_object.run_model(it, burn, thin, outfile, plot, True)
+    mc_object.run_model(it, burn, thin, outfile, plot, args.mod_comp)
     #out = open(outfile + ".csv", 'a')
     #out.write("Null Hypothesis DIC," + str(hoDIC) + "\n")
     #out.write("Alternative Hypothesis DIC," + str(haDIC) + "\n")

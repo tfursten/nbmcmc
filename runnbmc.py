@@ -57,6 +57,9 @@ parser.add_argument(
 parser.add_argument(
     "--d_tau", default=0.001, type=float,
     help="precision for density truncated normal prior")
+parser.add_argument(
+    "--mod_comp", default=False, type=bool,
+    help="Run DIC for null and alt model")
 args = parser.parse_args()
 
 
@@ -98,7 +101,7 @@ nbmc = NbMC(args.mu, args.ploidy, args.nb_start,
             args.n_terms)
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
 nbmc.run_model(
-    args.iter, args.burn, args.thin, args.outfile, args.plot,True)
+    args.iter, args.burn, args.thin, args.outfile, args.plot, args.mod_comp)
 
 end_time = time.time() - start_time
 param.write("Run Time:" + str(end_time) + "\n")
