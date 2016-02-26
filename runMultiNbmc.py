@@ -14,6 +14,12 @@ parser.add_argument(
     "outfile", metavar='OUTFILE', type=str,
     help="name of output file")
 parser.add_argument(
+    "--dist_infile", default="", type=str,
+    help="distance class file" )
+parser.add_argument(
+    "--count_infile", default="", type=str,
+    help="Total counts data")
+parser.add_argument(
     "-u", "--mu", default=0.0001, type=float,
     help="mutation rate")
 parser.add_argument(
@@ -87,12 +93,25 @@ param.close()
 
 
 all_data = np.array(np.genfromtxt(args.infile, delimiter=",", dtype=int))
-ndc = len(all_data[0])
-nreps = len(all_data) / args.n_markers
-dist = np.tile([i + 1 for i in xrange(ndc)], (nreps, 1))
-sz = [args.n_ind for i in xrange(ndc)]
-sz = np.array(sz)
-sz = np.tile(np.array(sz), (nreps, 1))
+x,y = all_data.shape
+print x,y
+ndc = y
+nreps = x / args.n_markers
+
+if args.dist_infile == "":
+    dist = np.tile([i + 1 for i in xrange(ndc)], (nreps,1))
+
+else:
+    dist = np.array(np.genfromtxt(args.dist_infile,delimiter=",",dtype=float))
+
+
+if args.count_infile == "":
+    sz = np.array([args.n_ind for i in xrange(ndc)])
+    sz = np.tile(sz, (nreps, 1))
+else:
+    sz = np.array(np.genfromtxt(args.count_infile,delimiter=",",dtype=float))
+
+
 
 
 def run(mc_object, it, burn, thin, outfile, plot, rep):
