@@ -87,7 +87,7 @@ s = str("Outfile: {}\nInfile: {}\nMu: {}\nPloidy: {}\n"
                                  args.d_mu, args.d_tau, args.n_terms,
                                  args.iter, args.burn, args.thin, mcmctot)
 print(s)
-param = open("params_" + args.outfile + ".txt", 'w')
+param = open(args.outfile + "_params.txt", 'w')
 param.write(s)
 param.close()
 
