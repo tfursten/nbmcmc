@@ -130,4 +130,4 @@ for i in xrange(nreps):
                 dist, sz, args.n_terms)
     nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
     run(nbmc, args.iter, args.burn, args.thin, args.outfile, args.plot, i)
-    idx += args.nmarkers
+    idx += args.n_markers
