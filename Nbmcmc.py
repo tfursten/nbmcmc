@@ -5,7 +5,8 @@ import scipy.misc as fac
 import scipy.special as sp
 import pymc
 import matplotlib.pyplot as plt
-plt.style.use('ggplot')
+import seaborn as sns
+#plt.style.use('ggplot')
 
 
 class NbMC:
@@ -60,18 +61,12 @@ class NbMC:
                 sz[k - 1] += 1
         return ibd, sz
 
-    def sort_data(self, data, dc, sz):
-        z = zip(dc, data, sz)
-        z.sort()
-        self.data = np.array([j for i, j, k in z], dtype=int)
-        self.dist = np.array([i for i, j, k in z], dtype=float)
-        self.sz = np.array([k for i, j, k in z], dtype=int)
+
 
     def set_data(self, newData, dc, sz):
         # if data_is_raw:
             #self.data, self.sz = raw_to_dc(self, newData)
         if len(newData[0]) == len(dc[0]) and len(dc[0]) == len(sz[0]):
-            #self.sort_data(newData, dc, sz)
             self.data = newData
             self.dist = dc
             self.sz = np.multiply(sz, self.k**2)
@@ -184,7 +179,7 @@ class NbMC:
             return 4.0 * nb * pi
 
         # deterministic function to calculate pIBD from Wright Malecot formula
-        @pymc.deterministic(plot=False,trace=False)
+        @pymc.deterministic(plot=False, trace=False)
         def Phi(nb=nb, s=sigma):
             phi = np.zeros((self.ndc))
             phi_bar = 0
@@ -237,13 +232,14 @@ class NbMC:
 
         return locals()
 
-    def run_model(self, it, burn, thin, outfile, plot, model_com=False):
-        dbname = outfile + ".pickle"
+    def run_model(self, it, burn, thin, path, outfile, plot, model_com=False):
+        dbname = path + outfile + ".pickle"
         M = pymc.Model(self.make_model())
         S = pymc.MCMC(
             M, db='pickle', calc_deviance=True,
             dbname=dbname)
         S.sample(iter=it, burn=burn, thin=thin)
+        S.db.close()
         # for i in xrange(self.nreps):
         # for j in xrange(self.ndc):
         # S.Lsim[i][j].summary()
@@ -259,15 +255,16 @@ class NbMC:
         reps = np.array([['Lsim_{}_{}'.format(i, j) for j in xrange(
             self.ndc)] for i in xrange(self.nreps)])
         S.write_csv(
-            outfile + ".csv", variables=["sigma", "ss", "density",
-                                         "nb", "neigh"]
+            path + outfile + ".csv", variables=["sigma", "ss", "density",
+                                                "nb", "neigh"]
             + list(reps.flatten()))
         S.stats()
         if plot:
-            pymc.Matplot.plot(S.ss)
-            pymc.Matplot.plot(S.neigh)
-            pymc.Matplot.plot(S.density)
-            pymc.Matplot.plot(S.sigma)
+            pymc.Matplot.plot(S.ss, format="pdf", path=path)
+            pymc.Matplot.plot(S.neigh, format="pdf", path=path)
+            pymc.Matplot.plot(S.density, format="pdf", path=path)
+            pymc.Matplot.plot(S.sigma, format="pdf", path=path)
+            pymc.Matplot.plot(S.nb, format="pdf", path=path)
             #[S.ss, S.neigh, S.density, S.sigma, S.nb,
             # S.lognb, S.logss, S.logs])
         #trace = S.trace("neigh")[:]
@@ -276,11 +273,15 @@ class NbMC:
             NS = pymc.MCMC(NM, db='pickle', calc_deviance=True,
                            dbname=outfile + "_null.pickle")
             NS.sample(iter=it, burn=burn, thin=thin)
-
+            reps = np.array([['Lsim_{}_{}'.format(i, j) for j in xrange(
+                self.ndc)] for i in xrange(self.nreps)])
+            NS.write_csv(path + outfile + "_null.csv", variables=["sigma", "ss", "density",
+                                                              "nb", "neigh"]
+                         + list(reps.flatten()))
             #pymc.raftery_lewis(trace, q=0.025, r=0.01)
-            haDIC = S.stats.dic()
-            hoDIC = NS.stats.dic()
-            com_out = open(outfile + "_model_comp.txt", 'w')
+            hoDIC = NS.dic
+            haDIC = S.dic
+            com_out = open(path+outfile + "_model_comp.txt", 'w')
             com_out.write("Null Hypothesis DIC: " + str(hoDIC) + "\n")
             com_out.write("Alt Hypothesis DIC: " + str(haDIC) + "\n")
             NS.db.close()
