@@ -87,7 +87,7 @@ s = str("Outfile: {}\nInfile: {}\nMu: {}\nPloidy: {}\n"
                                  args.d_mu, args.d_tau, args.n_terms,
                                  args.iter, args.burn, args.thin, mcmctot)
 print(s)
-param = open("params_" + args.outfile + ".txt", 'w')
+param = open(args.outfile + "_params.txt", 'w')
 param.write(s)
 param.close()
 
@@ -130,4 +130,4 @@ for i in xrange(nreps):
                 dist, sz, args.n_terms)
     nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
     run(nbmc, args.iter, args.burn, args.thin, args.outfile, args.plot, i)
-    idx += args.nmarkers
+    idx += args.n_markers
