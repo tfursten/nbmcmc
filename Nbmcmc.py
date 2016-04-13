@@ -5,8 +5,7 @@ import scipy.misc as fac
 import scipy.special as sp
 import pymc
 import matplotlib.pyplot as plt
-import seaborn as sns
-#plt.style.use('ggplot')
+plt.style.use('ggplot')
 
 
 class NbMC:
@@ -38,9 +37,9 @@ class NbMC:
         self.d_prior_tau = 0.001
 
     def set_prior_params(self, n_mu, n_tau, d_mu, d_tau):
-        self.nb_prior_mu = log(n_mu)
+        self.nb_prior_mu = n_mu
         self.nb_prior_tau = n_tau
-        self.d_prior_mu = log(d_mu)
+        self.d_prior_mu = d_mu
         self.d_prior_tau = d_tau
 
     def raw_to_dc(self, rawData):
@@ -69,7 +68,7 @@ class NbMC:
         if len(newData[0]) == len(dc[0]) and len(dc[0]) == len(sz[0]):
             self.data = newData
             self.dist = dc
-            self.sz = np.multiply(sz, self.k**2)
+            self.sz = sz
             self.dist2 = self.dist ** 2
             self.tsz = np.sum(self.sz[0])
             self.ndc = len(self.dist[0])
@@ -232,8 +231,8 @@ class NbMC:
 
         return locals()
 
-    def run_model(self, it, burn, thin, path, outfile, plot, model_com=False):
-        dbname = path + outfile + ".pickle"
+    def run_model(self, it, burn, thin, outfile, plot, model_com=False):
+        dbname = outfile + ".pickle"
         M = pymc.Model(self.make_model())
         S = pymc.MCMC(
             M, db='pickle', calc_deviance=True,
@@ -255,16 +254,16 @@ class NbMC:
         reps = np.array([['Lsim_{}_{}'.format(i, j) for j in xrange(
             self.ndc)] for i in xrange(self.nreps)])
         S.write_csv(
-            path + outfile + ".csv", variables=["sigma", "ss", "density",
+            outfile + ".csv", variables=["sigma", "ss", "density",
                                                 "nb", "neigh"]
             + list(reps.flatten()))
         S.stats()
         if plot:
-            pymc.Matplot.plot(S.ss, format="pdf", path=path)
-            pymc.Matplot.plot(S.neigh, format="pdf", path=path)
-            pymc.Matplot.plot(S.density, format="pdf", path=path)
-            pymc.Matplot.plot(S.sigma, format="pdf", path=path)
-            pymc.Matplot.plot(S.nb, format="pdf", path=path)
+            pymc.Matplot.plot(S.ss, format="pdf")
+            pymc.Matplot.plot(S.neigh, format="pdf")
+            pymc.Matplot.plot(S.density, format="pdf")
+            pymc.Matplot.plot(S.sigma, format="pdf")
+            pymc.Matplot.plot(S.nb, format="pdf")
             #[S.ss, S.neigh, S.density, S.sigma, S.nb,
             # S.lognb, S.logss, S.logs])
         #trace = S.trace("neigh")[:]
@@ -275,13 +274,13 @@ class NbMC:
             NS.sample(iter=it, burn=burn, thin=thin)
             reps = np.array([['Lsim_{}_{}'.format(i, j) for j in xrange(
                 self.ndc)] for i in xrange(self.nreps)])
-            NS.write_csv(path + outfile + "_null.csv", variables=["sigma", "ss", "density",
+            NS.write_csv(outfile + "_null.csv", variables=["sigma", "ss", "density",
                                                               "nb", "neigh"]
                          + list(reps.flatten()))
             #pymc.raftery_lewis(trace, q=0.025, r=0.01)
             hoDIC = NS.dic
             haDIC = S.dic
-            com_out = open(path+outfile + "_model_comp.txt", 'w')
+            com_out = open(outfile + "_model_comp.txt", 'w')
             com_out.write("Null Hypothesis DIC: " + str(hoDIC) + "\n")
             com_out.write("Alt Hypothesis DIC: " + str(haDIC) + "\n")
             NS.db.close()

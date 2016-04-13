@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import time
 import numpy as np
 from Nbmcmc import *
 
@@ -116,8 +117,12 @@ else:
 
 def run(mc_object, it, burn, thin, outfile, plot, rep):
     outfile = outfile + "%.3d" % rep
+    start_time = time.time()
     mc_object.run_model(it, burn, thin, outfile, plot, args.mod_comp)
-    #out = open(outfile + ".csv", 'a')
+    end_time = time.time() - start_time
+    out = open(outfile + ".csv", 'a')
+    out.write(str(end_time))
+    out.close()
     #out.write("Null Hypothesis DIC," + str(hoDIC) + "\n")
     #out.write("Alternative Hypothesis DIC," + str(haDIC) + "\n")
     #out.write("Difference," + str(abs(hoDIC - haDIC)))
