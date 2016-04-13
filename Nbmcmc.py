@@ -145,12 +145,12 @@ class NbMC:
         Li = np.empty((self.nreps, self.ndc), dtype=object)
         Lsim = np.empty((self.nreps, self.ndc), dtype=object)
         Li = pymc.Container(
-            [[self.const*pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
+            [[pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
                             p=Phi[i][j], observed=True,
                             value=self.data[i][j])
               for j in xrange(self.ndc)] for i in xrange(self.nreps)])
 
-        Lsim = pymc.Container([[self.const*pymc.Binomial('Lsim_{}_{}'.format(i, j),
+        Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
                                               n=self.sz[i][j],
                                               p=Phi[i][j]) for j
                                 in xrange(self.ndc)]
@@ -219,12 +219,12 @@ class NbMC:
         Li = np.empty((self.nreps, self.ndc), dtype=object)
         Lsim = np.empty((self.nreps, self.ndc), dtype=object)
         Li = pymc.Container(
-            [[self.const*pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
+            [[pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
                             p=Phi[i][j], observed=True,
                             value=self.data[i][j])
               for j in xrange(self.ndc)] for i in xrange(self.nreps)])
 
-        Lsim = pymc.Container([[self.const*pymc.Binomial('Lsim_{}_{}'.format(i, j),
+        Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
                                               n=self.sz[i][j],
                                               p=Phi[i][j]) for j
                                 in xrange(self.ndc)]
