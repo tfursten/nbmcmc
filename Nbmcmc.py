@@ -11,7 +11,7 @@ plt.style.use('ggplot')
 class NbMC:
 
     def __init__(self, mu, ploidy, nb_start, density_start,
-                 data_in, dist_in, size_in, n_terms, data_is_raw=False):
+                 data_in, dist_in, size_in, n_terms, n_samples, data_is_raw=False):
         self.mu = mu
         self.k = ploidy
         self.mu2 = -2.0 * self.mu
@@ -24,6 +24,7 @@ class NbMC:
         self.ndc = 0
         self.tsz = 0
         self.fbar = 0
+        self.const = 2/(n_samples-1.0)
         self.dist = np.empty(0, dtype=float)
         self.data = np.empty(0, dtype=int)
         self.sz = np.empty(0, dtype=int)
@@ -144,12 +145,12 @@ class NbMC:
         Li = np.empty((self.nreps, self.ndc), dtype=object)
         Lsim = np.empty((self.nreps, self.ndc), dtype=object)
         Li = pymc.Container(
-            [[pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
+            [[self.const*pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
                             p=Phi[i][j], observed=True,
                             value=self.data[i][j])
               for j in xrange(self.ndc)] for i in xrange(self.nreps)])
 
-        Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
+        Lsim = pymc.Container([[self.const*pymc.Binomial('Lsim_{}_{}'.format(i, j),
                                               n=self.sz[i][j],
                                               p=Phi[i][j]) for j
                                 in xrange(self.ndc)]
@@ -218,12 +219,12 @@ class NbMC:
         Li = np.empty((self.nreps, self.ndc), dtype=object)
         Lsim = np.empty((self.nreps, self.ndc), dtype=object)
         Li = pymc.Container(
-            [[pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
+            [[self.const*pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
                             p=Phi[i][j], observed=True,
                             value=self.data[i][j])
               for j in xrange(self.ndc)] for i in xrange(self.nreps)])
 
-        Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
+        Lsim = pymc.Container([[self.const*pymc.Binomial('Lsim_{}_{}'.format(i, j),
                                               n=self.sz[i][j],
                                               p=Phi[i][j]) for j
                                 in xrange(self.ndc)]

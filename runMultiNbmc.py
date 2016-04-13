@@ -51,8 +51,11 @@ parser.add_argument(
     "-m", "--n_markers", required=True, type=int,
     help="number of markers")
 parser.add_argument(
-    "-n", "--n_ind", default=20, type=int,
-    help="number of pairs per distance class")
+    "-n", "--n_ind", required=True, type=int,
+    help="total number of individual samples")
+parser.add_argument(
+    "--n_pairs", default=20, type=int,
+    help="Number of pairs per distance class")
 parser.add_argument(
     "--nb_mu", default=1.0, type=float,
     help="mean for truncated normal neighborhood size prior")
@@ -107,7 +110,7 @@ else:
 
 
 if args.count_infile == "":
-    sz = np.array([args.n_ind for i in xrange(ndc)])
+    sz = np.array([args.n_pairs for i in xrange(ndc)])
     sz = np.tile(sz, (nreps, 1))
 else:
     sz = np.array(np.genfromtxt(args.count_infile,delimiter=",",dtype=float))
@@ -132,7 +135,7 @@ idx = 0
 for i in xrange(nreps):
     nbmc = NbMC(args.mu, args.ploidy, args.nb_start,
                 args.density_start, all_data[idx:idx + args.n_markers,:],
-                dist, sz, args.n_terms)
+                dist, sz, args.n_terms, args.n_ind)
     nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
     run(nbmc, args.iter, args.burn, args.thin, args.outfile, args.plot, i)
     idx += args.n_markers
