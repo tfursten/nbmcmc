@@ -181,49 +181,28 @@ class NbMC:
         def neigh(nb=nb):
             return 4.0 * nb * pi
 
-        # deterministic function to calculate pIBD from Wright Malecot formula
+
         @pymc.deterministic(plot=False)
         def Phi():
             pIBD = np.repeat(self.fbar,
                              self.ibd.shape[1]).reshape(self.ibd.shape)
-            negative_values = np.less(pIBD, 0)
-            # Change any negative values to zero
-            if np.any(negative_values):
-                idx = np.where(negative_values == 1)
-                pIBD[idx] = 2 ** (-52)
-                # print("WARNING: pIBD fell below zero"
-                # "for distance classes:", idx)
+            pIBD = ma.masked_less(pIBD,0).filled(0)
             return pIBD
 
-        # Marginal Likelihoods
-        # Li = np.empty((self.ibd.shape[1],self.ibd.shape[0]), dtype=object)
-        # print Li.shape
-        # print self.weight.shape
-        # Lsim = np.empty((self.ibd.shape[1],self.ibd.shape[0]), dtype=object)
-        Li = pymc.Container(
-            [[pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
-                            p=Phi[i][j], observed=True,
-                            value=self.ibd[i][j])
-             for i in xrange(self.ibd.shape[0])]
-             for j in xrange(self.ibd.shape[1])])
+        @pymc.stochastic(observed=True)
+        def marginal_bin(value=self.ibd, p=Phi, n=self.sz):
+            print p.shape, n.shape, value.shape
+            return np.sum((value * np.log(p) + (n-value) *
+                           np.log(1-p)).T * self.weight)
 
         Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
                                               n=self.sz[i][j],
                                               p=Phi[i][j]) for j
                                 in xrange(self.ibd.shape[1])]
                                for i in xrange(self.ibd.shape[0])])
-
-        # @pymc.potential
-        # def weight(bin=Li):
-        #    return bin * self.weight
-
-        # @pymc.potential
-        # def sim_weight(bin=Lsim):
-        #    return bin * self.weight
-
         return locals()
 
-    def make_model(self, data=None):
+    def make_model(self):
         nb = pymc.Lognormal('nb', value=self.nb_start,
                             mu=self.nb_prior_mu,
                             tau=self.nb_prior_tau)
@@ -267,13 +246,6 @@ class NbMC:
             return np.sum((value * np.log(p) + (n-value) *
                            np.log(1-p)).T * self.weight)
 
-        # Marginal Likelihoods
-        # Li = pymc.Container(
-        #    [[pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
-        #                    p=Phi[i][j], observed=True,
-        #                    value=self.ibd[i][j])
-        #     for i in xrange(self.ibd.shape[0])]
-        #     for j in xrange(self.ibd.shape[1])])
 
         Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
                                  n=self.sz[i][j],
