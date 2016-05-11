@@ -1,5 +1,6 @@
 from math import *
 import numpy as np
+import numpy.ma as ma
 import sympy.mpmath as sy
 import scipy.misc as fac
 import scipy.special as sp
@@ -46,6 +47,9 @@ def tot_count(m1, m2):
     return total
 
 
+def tile_reshape(v, n, m):
+    return np.tile(v, n).reshape(n, m)
+
 # def equirect(u, v):
 #    '''Returns distance between two geographic coordinates
 #    in meters using equirectangular approximation'''
@@ -73,9 +77,8 @@ class NbMC:
         self.g0 = log(1 / float(self.sqrz))
         self.nb_start = nb_start
         self.d_start = density_start
-        self.plog = np.array([sy.polylog(i + 1, self.z)
-                              for i in xrange(34)])
-
+        self.taylor_terms = None
+        self.t2 = None
         self.n_markers = None
         self.marker_names = None
         self.dist = None
@@ -83,8 +86,11 @@ class NbMC:
         self.ibd = None
         self.tsz = None
         self.fbar = None
+        self.fbar_1 = None
         self.weight = None
 
+        self.parse_data(data_file, path, cartesian)
+        self.set_taylor_terms()
         self.nb_prior_mu = None
         self.nb_prior_tau = None
         self.d_prior_mu = None
@@ -96,7 +102,7 @@ class NbMC:
         self.d_prior_mu = d_mu
         self.d_prior_tau = d_tau
 
-    def parse_data(data_file, path, cartesian):
+    def parse_data(self, data_file, path, cartesian):
         data = np.array(np.genfromtxt(path + data_file,
                                       delimiter=",",
                                       dtype=str,
@@ -124,26 +130,32 @@ class NbMC:
                            dtype=int)
         self.tsz = np.sum(self.sz, axis=1, dtype=float)
         self.fbar = np.divide(np.sum(self.ibd, axis=1), self.tsz)
+        self.fbar_1 = 1 - self.fbar
         self.weight = 2 / (self.tsz - 1.0)
 
-    def t_series(self, x, sigma):
-        sum = 0.0
-        pow2 = 1
-        for t in xrange(34):
-            dt = 2 * t
-            pow2 <<= 1
-            powX = 1.0
-            powS = 1.0
-            for i in xrange(dt):
-                powX *= x
-                powS *= sigma
-            s = (self.plog[t] * powX) /\
-                (fac.factorial2(dt, exact=True) * pow2 * powS)
-            if((t % 2) == 0):
-                sum += s
-            else:
-                sum -= s
-        return sum
+    def set_taylor_terms(self):
+        terms = 34
+        n = len(self.dist)
+        t = np.array([i for i in xrange(terms)])
+        Li = tile_reshape(np.array([sy.polylog(i + 1, self.z)
+                                   for i in xrange(terms)]), n, terms)
+        fac2 = tile_reshape(fac.factorial(2*t), n, terms)
+        two2t = tile_reshape(2**(t+1), n, terms)
+        sign = tile_reshape((-1)**t, n, terms)
+        self.t2 = tile_reshape(2*t, n, terms)
+        dist = np.repeat(self.dist, terms).reshape(n, terms)
+        x2t = np.power(dist, self.t2)
+        num = np.multiply(Li, x2t)
+        num = np.multiply(num, sign)
+        den = np.multiply(fac2, two2t)
+        self.taylor_terms = np.divide(num, den)
+
+    def t_series(self, mask, sigma):
+        a = np.power(float(sigma), self.t2)
+        b = np.divide(1, a)
+        c = np.multiply(b, self.taylor_terms)
+        d = np.sum(c,axis=1)
+        return ma.array(d,mask=mask)
 
     def bessel(self, x, sigma):
         t = (x / float(sigma)) * self.sqrz
@@ -184,19 +196,30 @@ class NbMC:
             return pIBD
 
         # Marginal Likelihoods
-        Li = np.empty((self.nreps, self.ndc), dtype=object)
-        Lsim = np.empty((self.nreps, self.ndc), dtype=object)
+        # Li = np.empty((self.ibd.shape[1],self.ibd.shape[0]), dtype=object)
+        # print Li.shape
+        # print self.weight.shape
+        # Lsim = np.empty((self.ibd.shape[1],self.ibd.shape[0]), dtype=object)
         Li = pymc.Container(
             [[pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
                             p=Phi[i][j], observed=True,
-                            value=self.data[i][j])
-              for j in xrange(self.ndc)] for i in xrange(self.nreps)])
+                            value=self.ibd[i][j])
+             for i in xrange(self.ibd.shape[0])]
+             for j in xrange(self.ibd.shape[1])])
 
         Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
                                               n=self.sz[i][j],
                                               p=Phi[i][j]) for j
-                                in xrange(self.ndc)]
-                               for i in xrange(self.nreps)])
+                                in xrange(self.ibd.shape[1])]
+                               for i in xrange(self.ibd.shape[0])])
+
+        # @pymc.potential
+        # def weight(bin=Li):
+        #    return bin * self.weight
+
+        # @pymc.potential
+        # def sim_weight(bin=Lsim):
+        #    return bin * self.weight
 
         return locals()
 
@@ -223,43 +246,40 @@ class NbMC:
         # deterministic function to calculate pIBD from Wright Malecot formula
         @pymc.deterministic(plot=False, trace=False)
         def Phi(nb=nb, s=sigma):
-            phi = np.zeros((self.ibd.shape))
-            phi_bar = 0
             denom = 4.0 * pi * nb + self.g0
-            use_bessel = np.greater(self.dist, 5 * s)
-            for index in np.ndindex(phi.shape):
-                if use_bessel[index[1]]:
-                    p = self.bessel(self.dist[index[1]], s) / denom
-                else:
-                    p = self.t_series(self.dist[index[1]], s) / denom
-                phi_bar += p * self.sz[index[0]][index[1]]
-                phi[index[0]][index[1]] = p
+            use_bessel = ma.masked_less_equal(self.dist, 5 * s, copy=True)
+            use_bessel = self.bessel(use_bessel, s)
+            use_taylor = self.t_series(use_bessel.mask, s)
+            phi = use_bessel.filled(use_taylor)
+            phi = np.divide(phi, denom)
+            phi_bar = np.multiply(self.sz, phi) # Check this!!!!
+            phi_bar = np.sum(phi_bar, axis=1)  # and this
             phi_bar = np.divide(phi_bar, self.tsz)
-            r = (phi.T - phi_bar) / (1.0 - phi_bar)
-            pIBD = (self.fbar + (1-self.fbar) * r).T
-            negative_values = np.less(pIBD, 0)
+            phi = tile_reshape(phi,self.n_markers,len(self.dist))
+            r = (phi.T - phi_bar) / (1 - phi_bar)
+            pIBD = ma.masked_less((self.fbar + self.fbar_1 * r), 0)
             # Change any negative values to zero
-            if np.any(negative_values):
-                idx = np.where(negative_values == 1)
-                pIBD[idx] = 2 ** (-52)
-                # print("WARNING: pIBD fell below zero"
-                # "for distance classes:", idx)
-            return pIBD
+            pIBD = pIBD.filled(0)
+            return np.array(pIBD, dtype=float).T
+
+        @pymc.stochastic(observed=True)
+        def marginal_bin(value=self.ibd, p=Phi, n=self.sz):
+            return np.sum((value * np.log(p) + (n-value) *
+                           np.log(1-p)).T * self.weight)
 
         # Marginal Likelihoods
-        Li = np.empty((self.nreps, self.ndc), dtype=object)
-        Lsim = np.empty((self.nreps, self.ndc), dtype=object)
-        Li = pymc.Container(
-            [[pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
-                            p=Phi[i][j], observed=True,
-                            value=self.data[i][j])
-              for j in xrange(self.ndc)] for i in xrange(self.nreps)])
+        # Li = pymc.Container(
+        #    [[pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
+        #                    p=Phi[i][j], observed=True,
+        #                    value=self.ibd[i][j])
+        #     for i in xrange(self.ibd.shape[0])]
+        #     for j in xrange(self.ibd.shape[1])])
 
         Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
-                                              n=self.sz[i][j],
-                                              p=Phi[i][j]) for j
-                                in xrange(self.ndc)]
-                               for i in xrange(self.nreps)])
+                                 n=self.sz[i][j],
+                                 p=Phi[i][j])
+                                 for j in xrange(self.ibd.shape[1])]
+                                 for i in xrange(self.ibd.shape[0])])
 
         return locals()
 
@@ -284,7 +304,7 @@ class NbMC:
         S.nb.summary()
         S.neigh.summary()
         reps = np.array([['Lsim_{}_{}'.format(i, j) for j in xrange(
-            self.ndc)] for i in xrange(self.nreps)])
+            self.ibd.shape[1])] for i in xrange(self.ibd.shape[0])])
         S.write_csv(
             outfile + ".csv", variables=["sigma", "ss", "density",
                                          "nb", "neigh"] + list(reps.flatten()))
@@ -304,7 +324,7 @@ class NbMC:
                            dbname=outfile + "_null.pickle")
             NS.sample(iter=it, burn=burn, thin=thin)
             reps = np.array([['Lsim_{}_{}'.format(i, j) for j in xrange(
-                self.ndc)] for i in xrange(self.nreps)])
+                self.ibd.shape[1])] for i in xrange(self.ibd.shape[0])])
             NS.write_csv(outfile + "_null.csv",
                          variables=["sigma", "ss", "density", "nb", "neigh"] +
                          list(reps.flatten()))
