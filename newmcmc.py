@@ -7,6 +7,8 @@ import scipy.special as sp
 import scipy.spatial.distance as scd
 import pymc
 import matplotlib.pyplot as plt
+import gc
+import time
 plt.style.use('ggplot')
 
 
@@ -17,9 +19,8 @@ def sph_law_of_cos(u, v):
     u = np.radians(u)
     v = np.radians(v)
     delta_lon = v[1] - u[1]
-    d = acos(sin(u[0]) * sin(v[0]) +
-             cos(u[0]) * cos(v[0]) * cos(delta_lon)) * R
-    return d
+    return acos(sin(u[0]) * sin(v[0]) +
+                cos(u[0]) * cos(v[0]) * cos(delta_lon)) * R
 
 
 def ibd_count(m1, m2):
@@ -138,28 +139,26 @@ class NbMC:
         n = len(self.dist)
         t = np.array([i for i in xrange(terms)])
         Li = tile_reshape(np.array([sy.polylog(i + 1, self.z)
-                                   for i in xrange(terms)]), n, terms)
-        fac2 = tile_reshape(fac.factorial(2*t), n, terms)
-        two2t = tile_reshape(2**(t+1), n, terms)
+                                    for i in xrange(terms)]), n, terms)
+        fac2 = tile_reshape(fac.factorial(2 * t), n, terms)
+        two2t = tile_reshape(2**(t + 1), n, terms)
         sign = tile_reshape((-1)**t, n, terms)
-        self.t2 = tile_reshape(2*t, n, terms)
+        self.t2 = tile_reshape(2 * t, n, terms)
         dist = np.repeat(self.dist, terms).reshape(n, terms)
         x2t = np.power(dist, self.t2)
-        num = np.multiply(Li, x2t)
-        num = np.multiply(num, sign)
-        den = np.multiply(fac2, two2t)
-        self.taylor_terms = np.divide(num, den)
+        self.taylor_terms = np.divide(np.multiply(np.multiply(Li, x2t), sign),
+                                      np.multiply(fac2, two2t))
 
     def t_series(self, mask, sigma):
-        a = np.power(float(sigma), self.t2)
-        b = np.divide(1, a)
-        c = np.multiply(b, self.taylor_terms)
-        d = np.sum(c,axis=1)
-        return ma.array(d,mask=mask)
+        return ma.array(np.sum(
+                        np.multiply(
+                            np.divide(1, np.power(float(sigma),
+                                                  self.t2)),
+                            self.taylor_terms),
+                        axis=1), mask=mask)
 
     def bessel(self, x, sigma):
-        t = (x / float(sigma)) * self.sqrz
-        return sp.k0(t)
+        return sp.k0((x / float(sigma)) * self.sqrz)
 
     def make_null_model(self, data=None):
         nb = pymc.Lognormal('nb', value=self.nb_start,
@@ -181,19 +180,17 @@ class NbMC:
         def neigh(nb=nb):
             return 4.0 * nb * pi
 
-
         @pymc.deterministic(plot=False)
         def Phi():
-            pIBD = np.repeat(self.fbar,
-                             self.ibd.shape[1]).reshape(self.ibd.shape)
-            pIBD = ma.masked_less(pIBD,0).filled(0)
-            return pIBD
+            return ma.masked_less(np.repeat(self.fbar,
+                                            self.ibd.shape[1]).reshape(
+                                                self.ibd.shape),
+                                  0).filled(0)
 
         @pymc.stochastic(observed=True)
         def marginal_bin(value=self.ibd, p=Phi, n=self.sz):
-            print p.shape, n.shape, value.shape
-            return np.sum((value * np.log(p) + (n-value) *
-                           np.log(1-p)).T * self.weight)
+            return np.sum((value * np.log(p) + (n - value) *
+                           np.log(1 - p)).T * self.weight)
 
         Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
                                               n=self.sz[i][j],
@@ -226,32 +223,29 @@ class NbMC:
         @pymc.deterministic(plot=False, trace=False)
         def Phi(nb=nb, s=sigma):
             denom = 4.0 * pi * nb + self.g0
-            use_bessel = ma.masked_less_equal(self.dist, 5 * s, copy=True)
-            use_bessel = self.bessel(use_bessel, s)
+            use_bessel = self.bessel(ma.masked_less_equal(self.dist, 5 * s,
+                                                          copy=True), s)
             use_taylor = self.t_series(use_bessel.mask, s)
-            phi = use_bessel.filled(use_taylor)
-            phi = np.divide(phi, denom)
-            phi_bar = np.multiply(self.sz, phi) # Check this!!!!
-            phi_bar = np.sum(phi_bar, axis=1)  # and this
-            phi_bar = np.divide(phi_bar, self.tsz)
-            phi = tile_reshape(phi,self.n_markers,len(self.dist))
-            r = (phi.T - phi_bar) / (1 - phi_bar)
-            pIBD = ma.masked_less((self.fbar + self.fbar_1 * r), 0)
-            # Change any negative values to zero
-            pIBD = pIBD.filled(0)
-            return np.array(pIBD, dtype=float).T
+            phi = np.divide(use_bessel.filled(use_taylor), denom)
+            phi_bar = np.divide(np.sum(np.multiply(self.sz, phi), axis=1),
+                                self.tsz)
+            return np.array((ma.masked_less((self.fbar + self.fbar_1 *
+                                             ((tile_reshape(phi,
+                                                            self.n_markers,
+                                                            len(self.dist)).T -
+                                               phi_bar) / (1 - phi_bar))),
+                                            0)).filled(0), dtype=float).T
 
         @pymc.stochastic(observed=True)
         def marginal_bin(value=self.ibd, p=Phi, n=self.sz):
-            return np.sum((value * np.log(p) + (n-value) *
-                           np.log(1-p)).T * self.weight)
-
+            return np.sum((value * np.log(p) + (n - value) *
+                           np.log(1 - p)).T * self.weight)
 
         Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
-                                 n=self.sz[i][j],
-                                 p=Phi[i][j])
-                                 for j in xrange(self.ibd.shape[1])]
-                                 for i in xrange(self.ibd.shape[0])])
+                                              n=self.sz[i][j],
+                                              p=Phi[i][j])
+                                for j in xrange(self.ibd.shape[1])]
+                               for i in xrange(self.ibd.shape[0])])
 
         return locals()
 
