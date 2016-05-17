@@ -9,6 +9,7 @@ import pymc
 import matplotlib.pyplot as plt
 import gc
 import time
+from memory_profiler import profile
 plt.style.use('ggplot')
 
 
@@ -68,7 +69,7 @@ def tile_reshape(v, n, m):
 class NbMC:
 
     def __init__(self, mu, nb_start, density_start,
-                 data_file, path="./", cartesian=True):
+                 data_file, out_file, path="./", cartesian=True):
         self.mu = mu
         self.data_file = data_file
         self.path = path
@@ -96,6 +97,9 @@ class NbMC:
         self.nb_prior_tau = None
         self.d_prior_mu = None
         self.d_prior_tau = None
+        self.out_file = out_file.split(".")[0]
+        self.M = None
+        self.S = None
 
     def set_prior_params(self, n_mu, n_tau, d_mu, d_tau):
         self.nb_prior_mu = n_mu
@@ -133,6 +137,7 @@ class NbMC:
         self.fbar = np.divide(np.sum(self.ibd, axis=1), self.tsz)
         self.fbar_1 = 1 - self.fbar
         self.weight = 2 / (self.tsz - 1.0)
+        print len(self.dist)
 
     def set_taylor_terms(self):
         terms = 34
@@ -192,11 +197,6 @@ class NbMC:
             return np.sum((value * np.log(p) + (n - value) *
                            np.log(1 - p)).T * self.weight)
 
-        Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
-                                              n=self.sz[i][j],
-                                              p=Phi[i][j]) for j
-                                in xrange(self.ibd.shape[1])]
-                               for i in xrange(self.ibd.shape[0])])
         return locals()
 
     def make_model(self):
@@ -237,69 +237,51 @@ class NbMC:
                                             0)).filled(0), dtype=float).T
 
         @pymc.stochastic(observed=True)
-        def marginal_bin(value=self.ibd, p=Phi, n=self.sz):
-            return np.sum((value * np.log(p) + (n - value) *
+        def marginal_bin(value=self.ibd, p=Phi):
+            return np.sum((value * np.log(p) + (self.sz - value) *
                            np.log(1 - p)).T * self.weight)
-
-        Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
-                                              n=self.sz[i][j],
-                                              p=Phi[i][j])
-                                for j in xrange(self.ibd.shape[1])]
-                               for i in xrange(self.ibd.shape[0])])
-
         return locals()
 
-    def run_model(self, it, burn, thin, outfile, plot, model_com=False):
-        dbname = outfile + ".pickle"
-        M = pymc.Model(self.make_model())
-        S = pymc.MCMC(
-            M, db='pickle', calc_deviance=True,
+    def run_model(self, it, burn, thin, plot=False, path="./"):
+        dbname = path + self.out_file + ".pickle"
+        self.M = pymc.Model(self.make_model())
+        self.S = pymc.MCMC(
+            self.M, db='pickle', calc_deviance=True,
             dbname=dbname)
-        S.sample(iter=it, burn=burn, thin=thin)
-        S.db.close()
-        # for i in xrange(self.nreps):
-        # for j in xrange(self.ndc):
-        # S.Lsim[i][j].summary()
-        # if plot:
-        # pymc.Matplot.gof_plot(
-        # S.Lsim[i][j], self.data[i][j],
-        # name="gof" + str(i) + str(j))
-        S.sigma.summary()
-        S.ss.summary()
-        S.density.summary()
-        S.nb.summary()
-        S.neigh.summary()
-        reps = np.array([['Lsim_{}_{}'.format(i, j) for j in xrange(
-            self.ibd.shape[1])] for i in xrange(self.ibd.shape[0])])
-        S.write_csv(
-            outfile + ".csv", variables=["sigma", "ss", "density",
-                                         "nb", "neigh"] + list(reps.flatten()))
-        S.stats()
+        self.S.sample(iter=it, burn=burn, thin=thin)
+        self.S.ss.summary()
+        self.S.sigma.summary()
+        self.S.density.summary()
+        self.S.nb.summary()
+        self.S.neigh.summary()
+        self.S.write_csv(path + self.out_file + ".csv",
+                         variables=["sigma", "ss", "density", "nb", "neigh"])
+        #self.S.stats()
         if plot:
-            pymc.Matplot.plot(S.ss, format="pdf")
-            pymc.Matplot.plot(S.neigh, format="pdf")
-            pymc.Matplot.plot(S.density, format="pdf")
-            pymc.Matplot.plot(S.sigma, format="pdf")
-            pymc.Matplot.plot(S.nb, format="pdf")
-            # [S.ss, S.neigh, S.density, S.sigma, S.nb,
-            # S.lognb, S.logss, S.logs])
-        # trace = S.trace("neigh")[:]
-        if model_com:
-            NM = pymc.Model(self.make_null_model())
-            NS = pymc.MCMC(NM, db='pickle', calc_deviance=True,
-                           dbname=outfile + "_null.pickle")
-            NS.sample(iter=it, burn=burn, thin=thin)
-            reps = np.array([['Lsim_{}_{}'.format(i, j) for j in xrange(
-                self.ibd.shape[1])] for i in xrange(self.ibd.shape[0])])
-            NS.write_csv(outfile + "_null.csv",
-                         variables=["sigma", "ss", "density", "nb", "neigh"] +
-                         list(reps.flatten()))
-            # pymc.raftery_lewis(trace, q=0.025, r=0.01)
-            hoDIC = NS.dic
-            haDIC = S.dic
-            com_out = open(outfile + "_model_comp.txt", 'w')
-            com_out.write("Null Hypothesis DIC: " + str(hoDIC) + "\n")
-            com_out.write("Alt Hypothesis DIC: " + str(haDIC) + "\n")
-            NS.db.close()
-        # pymc.gelman_rubin(S)
-        S.db.close()
+            pymc.Matplot.plot(self.S, format="pdf", path=path,
+                              suffix="_" + self.out_file)
+        self.S.db.close()
+
+    def model_comp(self, it, burn, thin, path="./"):
+        NM = pymc.Model(self.make_null_model())
+        NS = pymc.MCMC(NM, db='pickle', calc_deviance=True,
+                       dbname=path + self.out_file + "_null.pickle")
+        NS.sample(iter=it, burn=burn, thin=thin)
+        NS.write_csv(path + self.out_file + "_null.csv",
+                         variables=["sigma", "ss", "density", "nb", "neigh"])
+        ha = pymc.MAP(self.M)
+        ho = pymc.MAP(NM)
+        ha.fit()
+        ho.fit()
+        haBIC = ha.BIC
+        hoBIC = ho.BIC
+        haAIC = ha.AIC
+        hoAIC = ho.AIC
+        print hoAIC, hoBIC
+        print haAIC, haBIC
+        com_out = open(path + self.out_file + "_model_comp.txt", 'w')
+        com_out.write("Null Hypothesis AIC: " + str(hoAIC) + "\n")
+        com_out.write("Alt Hypothesis AIC: " + str(haAIC) + "\n")
+        com_out.write("Null Hypothesis BIC: " + str(hoBIC) + "\n")
+        com_out.write("Alt Hypothesis BIC: " + str(haBIC) + "\n")
+        NS.db.close()
