@@ -8,11 +8,11 @@ The data columns should be arranged in the following order:
   3. Y or Longitude coordinate
   4. Marker data
 
-The alleles for each sample should be separated by "/" and each allele should be represented by an integer.  
-Example for a diploid organism 123/123  
-Example for a tetraploid organism 12345/12345/12345/12345  
+The alleles for each sample should be separated by `/` and each allele should be represented by an integer.  
+Example for a diploid organism `123/123`  
+Example for a tetraploid organism `12345/12345/12345/12345`  
 
 Missing alleles should be indicated by any of the following:  
 `None`, `Nan`, `Na`, `X`, `XX`, `XXX`, `0`, `00`, `000`, `-`,`.`  
 Case does not matter.  
-Because 0 represents a null allele, do not use 0 to code for actual alleles.  
+Because `0` represents a null allele, do not use `0` to code for actual alleles.  
