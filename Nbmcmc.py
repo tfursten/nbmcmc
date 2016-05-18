@@ -188,7 +188,7 @@ class NbMC:
             return ma.masked_less(np.repeat(self.fbar,
                                             self.ibd.shape[1]).reshape(
                                                 self.ibd.shape),
-                                  0).filled(0)
+                                  0).filled(2 ** (-52))
 
         @pymc.stochastic(observed=True)
         def marginal_bin(value=self.ibd, p=Phi, n=self.sz):
@@ -232,7 +232,7 @@ class NbMC:
                                                             self.n_markers,
                                                             len(self.dist)).T -
                                                phi_bar) / (1 - phi_bar))),
-                                            0)).filled(0), dtype=float).T
+                                            0)).filled(2 ** (-52)), dtype=float).T
 
         @pymc.stochastic(observed=True)
         def marginal_bin(value=self.ibd, p=Phi):
