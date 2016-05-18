@@ -7,9 +7,7 @@ import scipy.special as sp
 import scipy.spatial.distance as scd
 import pymc
 import matplotlib.pyplot as plt
-import gc
-import time
-from memory_profiler import profile
+
 plt.style.use('ggplot')
 
 
