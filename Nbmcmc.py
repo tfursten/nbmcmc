@@ -69,7 +69,7 @@ def tile_reshape(v, n, m):
 class NbMC:
 
     def __init__(self, mu, nb_start, density_start,
-                 data_file, out_file, path="./", cartesian=True):
+                 data_file, out_file, out_path="./", cartesian=True):
         self.mu = mu
         self.data_file = data_file
         self.path = path
@@ -97,7 +97,8 @@ class NbMC:
         self.nb_prior_tau = None
         self.d_prior_mu = None
         self.d_prior_tau = None
-        self.out_file = out_file.split(".")[0]
+        self.out_file = out_file
+        self.out_path = out_path
         self.M = None
         self.S = None
 
@@ -107,8 +108,8 @@ class NbMC:
         self.d_prior_mu = d_mu
         self.d_prior_tau = d_tau
 
-    def parse_data(self, data_file, path, cartesian):
-        data = np.array(np.genfromtxt(path + data_file,
+    def parse_data(self, data_file, cartesian):
+        data = np.array(np.genfromtxt(data_file,
                                       delimiter=",",
                                       dtype=str,
                                       skip_header=False,
@@ -242,8 +243,8 @@ class NbMC:
                            np.log(1 - p)).T * self.weight)
         return locals()
 
-    def run_model(self, it, burn, thin, plot=False, path="./"):
-        dbname = path + self.out_file + ".pickle"
+    def run_model(self, it, burn, thin, plot=False):
+        dbname = self.out_path + self.out_file + ".pickle"
         self.M = pymc.Model(self.make_model())
         self.S = pymc.MCMC(
             self.M, db='pickle', calc_deviance=True,
@@ -254,20 +255,20 @@ class NbMC:
         self.S.density.summary()
         self.S.nb.summary()
         self.S.neigh.summary()
-        self.S.write_csv(path + self.out_file + ".csv",
+        self.S.write_csv(self.out_path + self.out_file + ".csv",
                          variables=["sigma", "ss", "density", "nb", "neigh"])
         #self.S.stats()
         if plot:
-            pymc.Matplot.plot(self.S, format="pdf", path=path,
+            pymc.Matplot.plot(self.S, format="pdf", path=self.out_path,
                               suffix="_" + self.out_file)
         self.S.db.close()
 
-    def model_comp(self, it, burn, thin, path="./"):
+    def model_comp(self, it, burn, thin):
         NM = pymc.Model(self.make_null_model())
         NS = pymc.MCMC(NM, db='pickle', calc_deviance=True,
-                       dbname=path + self.out_file + "_null.pickle")
+                       dbname=self.out_path + self.out_file + "_null.pickle")
         NS.sample(iter=it, burn=burn, thin=thin)
-        NS.write_csv(path + self.out_file + "_null.csv",
+        NS.write_csv(self.out_path + self.out_file + "_null.csv",
                          variables=["sigma", "ss", "density", "nb", "neigh"])
         ha = pymc.MAP(self.M)
         ho = pymc.MAP(NM)
@@ -279,7 +280,7 @@ class NbMC:
         hoAIC = ho.AIC
         print hoAIC, hoBIC
         print haAIC, haBIC
-        com_out = open(path + self.out_file + "_model_comp.txt", 'w')
+        com_out = open(self.out_path + self.out_file + "_model_comp.txt", 'w')
         com_out.write("Null Hypothesis AIC: " + str(hoAIC) + "\n")
         com_out.write("Alt Hypothesis AIC: " + str(haAIC) + "\n")
         com_out.write("Null Hypothesis BIC: " + str(hoBIC) + "\n")

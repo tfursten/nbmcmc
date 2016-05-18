@@ -14,7 +14,15 @@ parser.add_argument(
     help="name of data file")
 parser.add_argument(
     "outfile", metavar='OUTFILE', type=str,
-    help="name of output file")
+    help="name of output (no extension)")
+parser.add_argument(
+    "--in_path", default="./", type=str,
+    help="path to data"
+)
+parser.add_argument(
+    "--out_path", default="./", type=str,
+    help="path for results"
+)
 parser.add_argument(
     "-u", "--mu", default=0.0001, type=float,
     help="mutation rate")
@@ -54,92 +62,60 @@ parser.add_argument(
 parser.add_argument(
     "--mod_comp", default=False, type=bool,
     help="Run DIC for null and alt model")
+parser.add_argument(
+    "--cartesian", default=True, type=bool,
+    help="Cartesian coordinates, geographical otherwise"
+)
 args = parser.parse_args()
-
 
 start_time = time.time()
 
-# TODO parse different types of data files
 mcmctot = args.iter / args.thin
-s = str("Outfile: {}\nInfile: {}\nMu: {}\nPloidy: {}\n"
-        "Nb Start: {}\nDensity Start: {}\n"
-        "Nb Mu: {}\nNb Tau: {}\nDensity Mu: {}\n"
+s = str("Outfile: {}{}\n"
+        "Infile: {}{}\n"
+        "Mu: {}\n"
+        "Ploidy: {}\n"
+        "Nb Start: {}\n"
+        "Density Start: {}\n"
+        "Nb Mu: {}\n"
+        "Nb Tau: {}\n"
+        "Density Mu: {}\n"
         "Density Tau: {}\n"
-        "Taylor Series Terms: {}\nMCMC iterations: {}\n"
-        "MCMC burn: {}\nMCMC thin: {}\n"
-        "MCMC total: {}").format(args.outfile, args.infile, args.mu,
-                                 args.ploidy, args.nb_start,
-                                 args.density_start, args.nb_mu, args.nb_tau,
-                                 args.d_mu, args.d_tau, args.n_terms,
-                                 args.iter, args.burn, args.thin, mcmctot)
+        "MCMC iterations: {}\n"
+        "MCMC burn: {}\n"
+        "MCMC thin: {}\n"
+        "MCMC total: {}\n"
+        "Cartesian: {}").format(args.out_path, args.outfile,
+                                args.in_path, args.infile,
+                                args.mu,
+                                args.ploidy,
+                                args.nb_start,
+                                args.density_start,
+                                args.nb_mu,
+                                args.nb_tau,
+                                args.d_mu,
+                                args.d_tau,
+                                args.n_terms,
+                                args.iter,
+                                args.burn,
+                                args.thin,
+                                mcmctot,
+                                args.cartesian)
 print(s)
-param = open("parameters.txt", 'w')
+param = open(args.out_path+args.outfile+"_params.txt", 'w')
 param.write(s)
-
-
-data = np.array(np.genfromtxt(args.infile, delimiter=",", dtype=int))
-if len(data) == 1:
-    data = np.array(data)
-# data = data[args.line]
-ndc = len(data[0])
-nreps = len(data)
-dist = np.tile([i + 1 for i in xrange(ndc)], (nreps, 1))
-sz = [args.n_ind for i in xrange(ndc)]
-sz = np.tile(np.array(sz), (nreps, 1))
-# sz = [args.n_ind * args.n_markers for i in xrange(ndc)]
-# sz.append(args.n_ind / 2 * args.n_markers)
-
-
-nbmc = NbMC(args.mu, args.ploidy, args.nb_start,
-            args.density_start, data, dist, sz,
-            args.n_terms)
+#intialize model
+nbmc = NbMC(args.mu, args.nb_start, args.density_start,
+            args.in_path+args.infile, args.outfile, args.out_path,
+            args.cartesian)
+# Set prior parameters
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
-nbmc.run_model(
-    args.iter, args.burn, args.thin, args.outfile, args.plot, args.mod_comp)
+# Run Model
+nbmc.run_model(args.iter, args.burn, args.thin, args.plot)
+# Run model comparison
+if args.mod_comp:
+    nbmc.model_comp(args.iter, args.burn, args.thin)
 
 end_time = time.time() - start_time
 param.write("Run Time:" + str(end_time) + "\n")
 param.close()
-
-sz = np.array(sz, dtype=float)
-pdata = np.divide(data, sz)
-
-f = open(args.outfile + ".csv", 'r')
-dist = [i + 1 for i in xrange(ndc)]
-
-for i in xrange(6):
-    f.readline()
-upper = []
-lower = []
-means = []
-for line in f:
-    line = line.strip().split(",")
-    means.append(float(line[1]))
-    lower.append(float(line[1]) - float(line[6]))
-    upper.append(float(line[10]) - float(line[1]))
-
-means = np.array(means).reshape(nreps, ndc)
-upper = np.array(upper).reshape(nreps, ndc)
-lower = np.array(lower).reshape(nreps, ndc)
-
-means = np.divide(np.array(means), sz)
-upper = np.divide(np.array(upper), sz)
-lower = np.divide(np.array(lower), sz)
-
-plt.clf()
-
-fig, ax = plt.subplots(nreps, 1, sharex=True, figsize=(5, 2 * nreps))
-fig.tight_layout()
-for i in xrange(nreps):
-    ax[i].errorbar(dist, means[i], yerr=[lower[i], upper[i]])
-    ax[i].plot(dist, pdata[i], 'o')
-    ax[i].set_ylim(-0.1, 1.1)
-    ax[i].set_xlim(0, ndc + 1)
-plt.savefig(args.outfile + str(i) + ".png")
-
-#out = open(args.outfile + ".csv", 'a')
-#out.write("Null Hypothesis DIC," + str(hoDIC) + "\n")
-#out.write("Alternative Hypothesis DIC," + str(haDIC) + "\n")
-#ut.write("Difference," + str(abs(hoDIC - haDIC)) + "\n")
-# plt.show()
-f.close()

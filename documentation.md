@@ -16,3 +16,7 @@ Missing alleles should be indicated by any of the following:
 `None`, `Nan`, `Na`, `X`, `XX`, `XXX`, `0`, `00`, `000`, `-`,`.`  
 Case does not matter.  
 Because `0` represents a null allele, do not use `0` to code for actual alleles.  
+
+Distance
+=========
+Sample locations may be recorded as Cartesian or geographical coordinates. The coordinate type must be specified when initializing the model using the `cartesian`. The default is set to `cartesian=False`. The distances for geographical coordinates are calculated as the great-circle distance between the points using the spherical law of cosines formula.  
