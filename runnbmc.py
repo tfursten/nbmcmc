@@ -95,7 +95,6 @@ s = str("Outfile: {}{}\n"
                                 args.nb_tau,
                                 args.d_mu,
                                 args.d_tau,
-                                args.n_terms,
                                 args.iter,
                                 args.burn,
                                 args.thin,

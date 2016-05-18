@@ -70,7 +70,8 @@ class NbMC:
                  data_file, out_file, out_path="./", cartesian=True):
         self.mu = mu
         self.data_file = data_file
-        self.path = path
+	self.out_file = out_file
+        self.out_path = out_path
         self.mu2 = -2.0 * self.mu
         self.z = exp(self.mu2)
         self.sqrz = sqrt(1.0 - self.z)
@@ -89,14 +90,12 @@ class NbMC:
         self.fbar_1 = None
         self.weight = None
 
-        self.parse_data(data_file, path, cartesian)
+        self.parse_data(data_file, cartesian)
         self.set_taylor_terms()
         self.nb_prior_mu = None
         self.nb_prior_tau = None
         self.d_prior_mu = None
         self.d_prior_tau = None
-        self.out_file = out_file
-        self.out_path = out_path
         self.M = None
         self.S = None
 
@@ -108,7 +107,7 @@ class NbMC:
 
     def parse_data(self, data_file, cartesian):
         data = np.array(np.genfromtxt(data_file,
-                                      delimiter=",",
+                                      delimiter="\t",
                                       dtype=str,
                                       skip_header=False,
                                       comments="#"))
