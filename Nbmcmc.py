@@ -1,41 +1,105 @@
 from math import *
 import numpy as np
+import numpy.ma as ma
 import sympy.mpmath as sy
 import scipy.misc as fac
 import scipy.special as sp
+import scipy.spatial.distance as scd
 import pymc
 import matplotlib.pyplot as plt
+import gc
+import time
+from memory_profiler import profile
 plt.style.use('ggplot')
+
+
+def sph_law_of_cos(u, v):
+    '''Returns distance between two geographic
+    coordinates in meters using spherical law of cosine'''
+    R = 6371000
+    u = np.radians(u)
+    v = np.radians(v)
+    delta_lon = v[1] - u[1]
+    return acos(sin(u[0]) * sin(v[0]) +
+                cos(u[0]) * cos(v[0]) * cos(delta_lon)) * R
+
+
+def ibd_count(m1, m2):
+    count = 0
+    for i in m1:
+        if i == 0:
+            continue
+        for j in m2:
+            if j == 0:
+                continue
+            if i == j:
+                count += 1
+    return count
+
+
+def tot_count(m1, m2):
+    total = 0
+    for i in m1:
+        if i == 0:
+            continue
+        for j in m2:
+            if j == 0:
+                continue
+            total += 1
+    return total
+
+
+def tile_reshape(v, n, m):
+    return np.tile(v, n).reshape(n, m)
+
+# def equirect(u, v):
+#    '''Returns distance between two geographic coordinates
+#    in meters using equirectangular approximation'''
+#    R = 6371000
+#    u = np.radians(u)
+#    v = np.radians(v)
+#    delta_lon = v[1] - u[1]
+#    delta_lat = v[0] - u[0]
+#    x = delta_lon * cos((u[0] + v[0]) / 2.0)
+#    y = delta_lat
+#    d = sqrt(x * x + y * y) * R
+#    return d
 
 
 class NbMC:
 
-    def __init__(self, mu, ploidy, nb_start, density_start,
-                 data_in, dist_in, size_in, n_terms, n_samples, data_is_raw=False):
+    def __init__(self, mu, nb_start, density_start,
+                 data_file, out_file, path="./", cartesian=True):
         self.mu = mu
-        self.k = ploidy
+        self.data_file = data_file
+        self.path = path
         self.mu2 = -2.0 * self.mu
         self.z = exp(self.mu2)
         self.sqrz = sqrt(1.0 - self.z)
         self.g0 = log(1 / float(self.sqrz))
         self.nb_start = nb_start
         self.d_start = density_start
-        self.nreps = 0
-        self.ndc = 0
-        self.tsz = 0
-        self.fbar = 0
-        self.const = 2/(n_samples-1.0)
-        self.dist = np.empty(0, dtype=float)
-        self.data = np.empty(0, dtype=int)
-        self.sz = np.empty(0, dtype=int)
-        self.set_data(data_in, dist_in, size_in)
-        self.plog = np.array([sy.polylog(i + 1, self.z)
-                              for i in xrange(n_terms)])
-        self.n_terms = n_terms
-        self.nb_prior_mu = nb_start
-        self.nb_prior_tau = 0.001
-        self.d_prior_mu = density_start
-        self.d_prior_tau = 0.001
+        self.taylor_terms = None
+        self.t2 = None
+        self.n_markers = None
+        self.marker_names = None
+        self.dist = None
+        self.sz = None
+        self.ibd = None
+        self.tsz = None
+        self.fbar = None
+        self.fbar_1 = None
+        self.weight = None
+
+        self.parse_data(data_file, path, cartesian)
+        self.set_taylor_terms()
+        self.nb_prior_mu = None
+        self.nb_prior_tau = None
+        self.d_prior_mu = None
+        self.d_prior_tau = None
+        self.out_file = out_file.split(".")[0]
+        self.M = None
+        self.S = None
 
     def set_prior_params(self, n_mu, n_tau, d_mu, d_tau):
         self.nb_prior_mu = n_mu
@@ -43,66 +107,63 @@ class NbMC:
         self.d_prior_mu = d_mu
         self.d_prior_tau = d_tau
 
-    def raw_to_dc(self, rawData):
-        n = len(rawData)
-        ibd = np.zeros(n / 2)
-        sz = np.zeros(n / 2)
-        for i in xrange(n):
-            if np.isnan(rawData[i]):
-                continue
-            for j in xrange(i + 1, n):
-                if np.isnan(rawData[j]):
-                    continue
-                k = abs(j - i)
-                if k > (n / 2):
-                    k = n - k
-                if int(rawData[i]) == int(rawData[j]):
-                    ibd[k - 1] += 1
-                sz[k - 1] += 1
-        return ibd, sz
-
-
-
-    def set_data(self, newData, dc, sz):
-        # if data_is_raw:
-            #self.data, self.sz = raw_to_dc(self, newData)
-        if len(newData[0]) == len(dc[0]) and len(dc[0]) == len(sz[0]):
-            self.data = newData
-            self.dist = dc
-            self.sz = sz
-            self.dist2 = self.dist ** 2
-            self.tsz = np.sum(self.sz[0])
-            self.ndc = len(self.dist[0])
-            self.fbar = np.array(
-                [np.sum(d) / float(self.tsz) for d in self.data])
-            self.nreps = len(self.data)
-            print self.nreps
+    def parse_data(self, data_file, path, cartesian):
+        data = np.array(np.genfromtxt(path + data_file,
+                                      delimiter=",",
+                                      dtype=str,
+                                      skip_header=False,
+                                      comments="#"))
+        self.marker_names = data[0][3:]
+        self.n_markers = len(self.marker_names)
+        data = data[1:][:].T
+        coords = np.array(data[:][1:3].T, dtype=float)
+        if cartesian:
+            self.dist = scd.pdist(coords, 'euclidean')
         else:
-            raise Exception(
-                "ERROR: data and distance class arrays are not equal length")
+            self.dist = scd.pdist(coords, sph_law_of_cos)
+        markers = np.array(data[:][3:], ndmin=2)
+        markers = np.array(
+            np.core.defchararray.split(markers, sep="/").tolist(), dtype=str)
+        markers = np.core.defchararray.lower(markers)
+        # order matters "na" needs to be after "nan"
+        for n in ["none", "nan", "na", "x", "-", "."]:
+            markers = np.core.defchararray.replace(markers, n, "0")
+        markers = markers.astype(int, copy=False)
+        self.ibd = np.array([scd.pdist(i, ibd_count) for i in markers],
+                            dtype=int)
+        self.sz = np.array([scd.pdist(i, tot_count) for i in markers],
+                           dtype=int)
+        self.tsz = np.sum(self.sz, axis=1, dtype=float)
+        self.fbar = np.divide(np.sum(self.ibd, axis=1), self.tsz)
+        self.fbar_1 = 1 - self.fbar
+        self.weight = 2 / (self.tsz - 1.0)
+        print len(self.dist)
 
-    def t_series(self, x, sigma):
-        sum = 0.0
-        pow2 = 1
-        for t in xrange(self.n_terms):
-            dt = 2 * t
-            pow2 <<= 1
-            powX = 1.0
-            powS = 1.0
-            for i in xrange(dt):
-                powX *= x
-                powS *= sigma
-            s = (self.plog[t] * powX) /\
-                (fac.factorial2(dt, exact=True) * pow2 * powS)
-            if((t % 2) == 0):
-                sum += s
-            else:
-                sum -= s
-        return sum
+    def set_taylor_terms(self):
+        terms = 34
+        n = len(self.dist)
+        t = np.array([i for i in xrange(terms)])
+        Li = tile_reshape(np.array([sy.polylog(i + 1, self.z)
+                                    for i in xrange(terms)]), n, terms)
+        fac2 = tile_reshape(fac.factorial(2 * t), n, terms)
+        two2t = tile_reshape(2**(t + 1), n, terms)
+        sign = tile_reshape((-1)**t, n, terms)
+        self.t2 = tile_reshape(2 * t, n, terms)
+        dist = np.repeat(self.dist, terms).reshape(n, terms)
+        x2t = np.power(dist, self.t2)
+        self.taylor_terms = np.divide(np.multiply(np.multiply(Li, x2t), sign),
+                                      np.multiply(fac2, two2t))
+
+    def t_series(self, mask, sigma):
+        return ma.array(np.sum(
+                        np.multiply(
+                            np.divide(1, np.power(float(sigma),
+                                                  self.t2)),
+                            self.taylor_terms),
+                        axis=1), mask=mask)
 
     def bessel(self, x, sigma):
-        t = (x / float(sigma)) * self.sqrz
-        return sp.k0(t)
+        return sp.k0((x / float(sigma)) * self.sqrz)
 
     def make_null_model(self, data=None):
         nb = pymc.Lognormal('nb', value=self.nb_start,
@@ -124,41 +185,21 @@ class NbMC:
         def neigh(nb=nb):
             return 4.0 * nb * pi
 
-        # deterministic function to calculate pIBD from Wright Malecot formula
         @pymc.deterministic(plot=False)
         def Phi():
-            phi = np.zeros((self.ndc))
-            r = phi
-            pIBD = np.array(
-                [self.fbar[i] + (1.0 - self.fbar[i]) * r
-                 for i in xrange(self.nreps)])
-            negative_values = np.less(pIBD, 0)
-            # Change any negative values to zero
-            if np.any(negative_values):
-                idx = np.where(negative_values == 1)
-                pIBD[idx] = 2 ** (-52)
-                # print("WARNING: pIBD fell below zero"
-                #"for distance classes:", idx)
-            return pIBD
+            return ma.masked_less(np.repeat(self.fbar,
+                                            self.ibd.shape[1]).reshape(
+                                                self.ibd.shape),
+                                  0).filled(0)
 
-        # Marginal Likelihoods
-        Li = np.empty((self.nreps, self.ndc), dtype=object)
-        Lsim = np.empty((self.nreps, self.ndc), dtype=object)
-        Li = pymc.Container(
-            [[pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
-                            p=Phi[i][j], observed=True,
-                            value=self.data[i][j])
-              for j in xrange(self.ndc)] for i in xrange(self.nreps)])
-
-        Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
-                                              n=self.sz[i][j],
-                                              p=Phi[i][j]) for j
-                                in xrange(self.ndc)]
-                               for i in xrange(self.nreps)])
+        @pymc.stochastic(observed=True)
+        def marginal_bin(value=self.ibd, p=Phi, n=self.sz):
+            return np.sum((value * np.log(p) + (n - value) *
+                           np.log(1 - p)).T * self.weight)
 
         return locals()
 
-    def make_model(self, data=None):
+    def make_model(self):
         nb = pymc.Lognormal('nb', value=self.nb_start,
                             mu=self.nb_prior_mu,
                             tau=self.nb_prior_tau)
@@ -181,109 +222,66 @@ class NbMC:
         # deterministic function to calculate pIBD from Wright Malecot formula
         @pymc.deterministic(plot=False, trace=False)
         def Phi(nb=nb, s=sigma):
-            phi = np.zeros((self.ndc))
-            phi_bar = 0
             denom = 4.0 * pi * nb + self.g0
-            split = self.ndc
-            for i in xrange(self.ndc):
-                if self.dist[0][i] > 5 * s:
-                    split = i
-                    break
-            for sss in xrange(split):
-                if self.dist[0][sss] == 0:
-                    p = self.g0 / denom
-                else:
-                    p = self.t_series(self.dist[0][sss], s) / denom
-                phi_bar += p * self.sz[0][sss]
-                phi[sss] = p
-            for lll in xrange(split, self.ndc):
-                p = self.bessel(self.dist[0][lll], s) / denom
-                phi_bar += p * self.sz[0][lll]
-                phi[lll] = p
-            phi_bar /= float(self.tsz)
-            r = (phi - phi_bar) / (1.0 - phi_bar)
+            use_bessel = self.bessel(ma.masked_less_equal(self.dist, 5 * s,
+                                                          copy=True), s)
+            use_taylor = self.t_series(use_bessel.mask, s)
+            phi = np.divide(use_bessel.filled(use_taylor), denom)
+            phi_bar = np.divide(np.sum(np.multiply(self.sz, phi), axis=1),
+                                self.tsz)
+            return np.array((ma.masked_less((self.fbar + self.fbar_1 *
+                                             ((tile_reshape(phi,
+                                                            self.n_markers,
+                                                            len(self.dist)).T -
+                                               phi_bar) / (1 - phi_bar))),
+                                            0)).filled(0), dtype=float).T
 
-            pIBD = np.array(
-                [self.fbar[i] + (1.0 - self.fbar[i]) * r
-                 for i in xrange(self.nreps)])
-            negative_values = np.less(pIBD, 0)
-            # Change any negative values to zero
-            if np.any(negative_values):
-                idx = np.where(negative_values == 1)
-                pIBD[idx] = 2 ** (-52)
-                # print("WARNING: pIBD fell below zero"
-                #"for distance classes:", idx)
-            return pIBD
-
-        # Marginal Likelihoods
-        Li = np.empty((self.nreps, self.ndc), dtype=object)
-        Lsim = np.empty((self.nreps, self.ndc), dtype=object)
-        Li = pymc.Container(
-            [[pymc.Binomial('Li_{}_{}'.format(i, j), n=self.sz[i][j],
-                            p=Phi[i][j], observed=True,
-                            value=self.data[i][j])
-              for j in xrange(self.ndc)] for i in xrange(self.nreps)])
-
-        Lsim = pymc.Container([[pymc.Binomial('Lsim_{}_{}'.format(i, j),
-                                              n=self.sz[i][j],
-                                              p=Phi[i][j]) for j
-                                in xrange(self.ndc)]
-                               for i in xrange(self.nreps)])
-
+        @pymc.stochastic(observed=True)
+        def marginal_bin(value=self.ibd, p=Phi):
+            return np.sum((value * np.log(p) + (self.sz - value) *
+                           np.log(1 - p)).T * self.weight)
         return locals()
 
-    def run_model(self, it, burn, thin, outfile, plot, model_com=False):
-        dbname = outfile + ".pickle"
-        M = pymc.Model(self.make_model())
-        S = pymc.MCMC(
-            M, db='pickle', calc_deviance=True,
+    def run_model(self, it, burn, thin, plot=False, path="./"):
+        dbname = path + self.out_file + ".pickle"
+        self.M = pymc.Model(self.make_model())
+        self.S = pymc.MCMC(
+            self.M, db='pickle', calc_deviance=True,
             dbname=dbname)
-        S.sample(iter=it, burn=burn, thin=thin)
-        S.db.close()
-        # for i in xrange(self.nreps):
-        # for j in xrange(self.ndc):
-        # S.Lsim[i][j].summary()
-        # if plot:
-        # pymc.Matplot.gof_plot(
-        #S.Lsim[i][j], self.data[i][j],
-        # name="gof" + str(i) + str(j))
-        S.sigma.summary()
-        S.ss.summary()
-        S.density.summary()
-        S.nb.summary()
-        S.neigh.summary()
-        reps = np.array([['Lsim_{}_{}'.format(i, j) for j in xrange(
-            self.ndc)] for i in xrange(self.nreps)])
-        S.write_csv(
-            outfile + ".csv", variables=["sigma", "ss", "density",
-                                                "nb", "neigh"]
-            + list(reps.flatten()))
-        S.stats()
+        self.S.sample(iter=it, burn=burn, thin=thin)
+        self.S.ss.summary()
+        self.S.sigma.summary()
+        self.S.density.summary()
+        self.S.nb.summary()
+        self.S.neigh.summary()
+        self.S.write_csv(path + self.out_file + ".csv",
+                         variables=["sigma", "ss", "density", "nb", "neigh"])
+        #self.S.stats()
         if plot:
-            pymc.Matplot.plot(S.ss, format="pdf")
-            pymc.Matplot.plot(S.neigh, format="pdf")
-            pymc.Matplot.plot(S.density, format="pdf")
-            pymc.Matplot.plot(S.sigma, format="pdf")
-            pymc.Matplot.plot(S.nb, format="pdf")
-            #[S.ss, S.neigh, S.density, S.sigma, S.nb,
-            # S.lognb, S.logss, S.logs])
-        #trace = S.trace("neigh")[:]
-        if model_com:
-            NM = pymc.Model(self.make_null_model())
-            NS = pymc.MCMC(NM, db='pickle', calc_deviance=True,
-                           dbname=outfile + "_null.pickle")
-            NS.sample(iter=it, burn=burn, thin=thin)
-            reps = np.array([['Lsim_{}_{}'.format(i, j) for j in xrange(
-                self.ndc)] for i in xrange(self.nreps)])
-            NS.write_csv(outfile + "_null.csv", variables=["sigma", "ss", "density",
-                                                              "nb", "neigh"]
-                         + list(reps.flatten()))
-            #pymc.raftery_lewis(trace, q=0.025, r=0.01)
-            hoDIC = NS.dic
-            haDIC = S.dic
-            com_out = open(outfile + "_model_comp.txt", 'w')
-            com_out.write("Null Hypothesis DIC: " + str(hoDIC) + "\n")
-            com_out.write("Alt Hypothesis DIC: " + str(haDIC) + "\n")
-            NS.db.close()
-        # pymc.gelman_rubin(S)
-        S.db.close()
+            pymc.Matplot.plot(self.S, format="pdf", path=path,
+                              suffix="_" + self.out_file)
+        self.S.db.close()
+
+    def model_comp(self, it, burn, thin, path="./"):
+        NM = pymc.Model(self.make_null_model())
+        NS = pymc.MCMC(NM, db='pickle', calc_deviance=True,
+                       dbname=path + self.out_file + "_null.pickle")
+        NS.sample(iter=it, burn=burn, thin=thin)
+        NS.write_csv(path + self.out_file + "_null.csv",
+                         variables=["sigma", "ss", "density", "nb", "neigh"])
+        ha = pymc.MAP(self.M)
+        ho = pymc.MAP(NM)
+        ha.fit()
+        ho.fit()
+        haBIC = ha.BIC
+        hoBIC = ho.BIC
+        haAIC = ha.AIC
+        hoAIC = ho.AIC
+        print hoAIC, hoBIC
+        print haAIC, haBIC
+        com_out = open(path + self.out_file + "_model_comp.txt", 'w')
+        com_out.write("Null Hypothesis AIC: " + str(hoAIC) + "\n")
+        com_out.write("Alt Hypothesis AIC: " + str(haAIC) + "\n")
+        com_out.write("Null Hypothesis BIC: " + str(hoBIC) + "\n")
+        com_out.write("Alt Hypothesis BIC: " + str(haBIC) + "\n")
+        NS.db.close()

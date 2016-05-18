@@ -28,9 +28,6 @@ parser.add_argument(
     "-d", "--density_start", default=1.0,
     type=float, help="starting value for density")
 parser.add_argument(
-    "-t", "--n_terms", default=34, type=int,
-    help="number of terms for taylor series")
-parser.add_argument(
     "-it", "--iter", default=10000, type=int,
     help="number of MCMC iterations")
 parser.add_argument(
@@ -43,20 +40,17 @@ parser.add_argument(
     "-p", "--plot", action="store_true",
     help="output plots")
 parser.add_argument(
-    "-n", "--n_ind", default=100, type=int,
-    help="number of pairs per distance class")
-parser.add_argument(
     "--nb_mu", default=1.0, type=float,
-    help="mean for truncated normal neighborhood size prior")
+    help="mean for log normal neighborhood size prior")
 parser.add_argument(
     "--nb_tau", default=0.001, type=float,
-    help="precision for truncated normal neighborhood size prior")
+    help="precision for log normal neighborhood size prior")
 parser.add_argument(
     "--d_mu", default=1.0, type=float,
-    help="mean for density truncated normal prior")
+    help="mean for density log normal prior")
 parser.add_argument(
     "--d_tau", default=0.001, type=float,
-    help="precision for density truncated normal prior")
+    help="precision for density log normal prior")
 parser.add_argument(
     "--mod_comp", default=False, type=bool,
     help="Run DIC for null and alt model")
@@ -149,5 +143,3 @@ plt.savefig(args.outfile + str(i) + ".png")
 #ut.write("Difference," + str(abs(hoDIC - haDIC)) + "\n")
 # plt.show()
 f.close()
-
-
