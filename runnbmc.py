@@ -110,7 +110,7 @@ param.write(s)
 # intialize model
 nbmc = NbMC(args.mu, args.nb_start, args.density_start,
             args.in_path+args.infile, args.outfile, args.out_path,
-            args.sep, args.cartesian)
+            sep=args.sep, cartesian=args.cartesian)
 # Set prior parameters
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
 # Run Model
