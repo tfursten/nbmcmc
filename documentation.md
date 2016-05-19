@@ -1,6 +1,6 @@
 Data Files
 ============
-The data file should be a comma separated file with a single header line.  
+The data file should be either a comma, space or tab separated file with a single header line. The default delimiter is `,` but when initializing the model, the `sep` argument can be changed to `"\t"` for tab or `" "` for space.
 Comment lines that begin with `#` will be ignored.  
 The data columns should be arranged in the following order:  
   1. Sample ID: Any alpha numeric combination

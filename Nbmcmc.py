@@ -67,10 +67,11 @@ def tile_reshape(v, n, m):
 class NbMC:
 
     def __init__(self, mu, nb_start, density_start,
-                 data_file, out_file, out_path="./", cartesian=True):
+                 data_file, out_file, out_path="./", sep=",",
+                 cartesian=True):
         self.mu = mu
         self.data_file = data_file
-	self.out_file = out_file
+        self.out_file = out_file
         self.out_path = out_path
         self.mu2 = -2.0 * self.mu
         self.z = exp(self.mu2)
@@ -90,7 +91,7 @@ class NbMC:
         self.fbar_1 = None
         self.weight = None
 
-        self.parse_data(data_file, cartesian)
+        self.parse_data(data_file, cartesian, sep)
         self.set_taylor_terms()
         self.nb_prior_mu = None
         self.nb_prior_tau = None
@@ -105,9 +106,9 @@ class NbMC:
         self.d_prior_mu = d_mu
         self.d_prior_tau = d_tau
 
-    def parse_data(self, data_file, cartesian):
+    def parse_data(self, data_file, cartesian, sep):
         data = np.array(np.genfromtxt(data_file,
-                                      delimiter="\t",
+                                      delimiter=sep,
                                       dtype=str,
                                       skip_header=False,
                                       comments="#"))
@@ -232,7 +233,8 @@ class NbMC:
                                                             self.n_markers,
                                                             len(self.dist)).T -
                                                phi_bar) / (1 - phi_bar))),
-                                            0)).filled(2 ** (-52)), dtype=float).T
+                                            0)).filled(2 ** (-52)),
+                            dtype=float).T
 
         @pymc.stochastic(observed=True)
         def marginal_bin(value=self.ibd, p=Phi):
@@ -247,14 +249,10 @@ class NbMC:
             self.M, db='pickle', calc_deviance=True,
             dbname=dbname)
         self.S.sample(iter=it, burn=burn, thin=thin)
-        self.S.ss.summary()
-        self.S.sigma.summary()
-        self.S.density.summary()
-        self.S.nb.summary()
-        self.S.neigh.summary()
+        self.S.summary()
         self.S.write_csv(self.out_path + self.out_file + ".csv",
                          variables=["sigma", "ss", "density", "nb", "neigh"])
-        #self.S.stats()
+        # self.S.stats()
         if plot:
             pymc.Matplot.plot(self.S, format="pdf", path=self.out_path,
                               suffix="_" + self.out_file)
@@ -266,7 +264,7 @@ class NbMC:
                        dbname=self.out_path + self.out_file + "_null.pickle")
         NS.sample(iter=it, burn=burn, thin=thin)
         NS.write_csv(self.out_path + self.out_file + "_null.csv",
-                         variables=["sigma", "ss", "density", "nb", "neigh"])
+                     variables=["sigma", "ss", "density", "nb", "neigh"])
         ha = pymc.MAP(self.M)
         ho = pymc.MAP(NM)
         ha.fit()
