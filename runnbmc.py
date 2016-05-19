@@ -24,8 +24,9 @@ parser.add_argument(
     help="path for results"
 )
 parser.add_argument(
-    "--sep", default=",", type=str,
-    help="delimiter for data file: ',' ' ' or '/t'"
+    "sep", choices=['comma', 'space', 'tab', 'semicolon'],
+    type=str, default='comma',
+    help="set data file delimiter"
 )
 parser.add_argument(
     "-u", "--mu", default=0.0001, type=float,
@@ -104,13 +105,17 @@ s = str("Outfile: {}{}\n"
                                   args.thin,
                                   mcmctot,
                                   args.cartesian)
-print(s)
+
+sep = {'comma': ',',
+       'space': ' ',
+       'tab': '\t',
+       'semicolon': ';'}[args.sep]
 param = open(args.out_path+args.outfile+"_params.txt", 'w')
 param.write(s)
 # intialize model
 nbmc = NbMC(args.mu, args.nb_start, args.density_start,
             args.in_path+args.infile, args.outfile, args.out_path,
-            sep=args.sep, cartesian=args.cartesian)
+            cartesian=args.cartesian, sep=sep)
 # Set prior parameters
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
 # Run Model

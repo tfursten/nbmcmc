@@ -67,7 +67,7 @@ def tile_reshape(v, n, m):
 class NbMC:
 
     def __init__(self, mu, nb_start, density_start,
-                 data_file, out_file, out_path="./", sep=",",
+                 data_file, out_file, out_path="./", sep="\t",
                  cartesian=True):
         self.mu = mu
         self.data_file = data_file
@@ -136,7 +136,6 @@ class NbMC:
         self.fbar = np.divide(np.sum(self.ibd, axis=1), self.tsz)
         self.fbar_1 = 1 - self.fbar
         self.weight = 2 / (self.tsz - 1.0)
-        print len(self.dist)
 
     def set_taylor_terms(self):
         terms = 34
