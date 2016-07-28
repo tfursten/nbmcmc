@@ -32,7 +32,7 @@ parser.add_argument(
     "-u", "--mu", default=0.0001, type=float,
     help="mutation rate")
 parser.add_argument(
-    "-k", "--ploidy", default=1.0, type=float,
+    "-k", "--ploidy", default=2.0, type=float,
     help="ploidy")
 parser.add_argument(
     "-nb", "--nb_start", default=1.0, type=float,

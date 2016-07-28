@@ -1,7 +1,7 @@
 from math import *
 import numpy as np
 import numpy.ma as ma
-import sympy.mpmath as sy
+import mpmath as sy
 import scipy.misc as fac
 import scipy.special as sp
 import scipy.spatial.distance as scd
@@ -20,35 +20,6 @@ def sph_law_of_cos(u, v):
     delta_lon = v[1] - u[1]
     return acos(sin(u[0]) * sin(v[0]) +
                 cos(u[0]) * cos(v[0]) * cos(delta_lon)) * R
-
-
-def ibd_count(m1, m2):
-    count = 0
-    for i in m1:
-        if i == 0:
-            continue
-        for j in m2:
-            if j == 0:
-                continue
-            if i == j:
-                count += 1
-    return count
-
-
-def tot_count(m1, m2):
-    total = 0
-    for i in m1:
-        if i == 0:
-            continue
-        for j in m2:
-            if j == 0:
-                continue
-            total += 1
-    return total
-
-
-def tile_reshape(v, n, m):
-    return np.tile(v, n).reshape(n, m)
 
 # def equirect(u, v):
 #    '''Returns distance between two geographic coordinates
@@ -70,6 +41,7 @@ class NbMC:
                  data_file, out_file, out_path="./", sep="\t",
                  cartesian=True):
         self.mu = mu
+        self.ploidy = None
         self.data_file = data_file
         self.out_file = out_file
         self.out_path = out_path
@@ -82,14 +54,19 @@ class NbMC:
         self.taylor_terms = None
         self.t2 = None
         self.n_markers = None
+        self.n_pairs = None
         self.marker_names = None
         self.dist = None
-        self.sz = None
-        self.ibd = None
-        self.tsz = None
+        self.unique_dists = None
+        self.unique_ID = None
+        self.unique_counts = None
+        self.iis = None
+        self.iis_inv = None
         self.fbar = None
         self.fbar_1 = None
-        self.weight = None
+        self.weights = None
+        self.n_alleles = None
+        self.n_ind = None
 
         self.parse_data(data_file, cartesian, sep)
         self.set_taylor_terms()
@@ -106,6 +83,29 @@ class NbMC:
         self.d_prior_mu = d_mu
         self.d_prior_tau = d_tau
 
+    def adjust_weight_for_null(self, marker_idx, ind_idx, allele_idx, weights):
+        '''In the case of a null allele the weight (number of comparisons) for
+        every other individual is reduced by 1 and the weight is Inf for the
+        null allele (1/Inf = 0). The weight for all other alleles within this
+        individual will remain the same.'''
+        idx1 = int(ind_idx * self.ploidy)
+        idx2 = int(idx1 + self.ploidy)
+        weights[marker_idx][idx1:idx2] = np.add(
+                                        weights[marker_idx][idx1:idx2], 1)
+        weights[marker_idx][:] = np.subtract(weights[marker_idx][:], 1)
+        weights[marker_idx][idx1 + allele_idx] = np.Inf
+        return weights
+
+    def set_weights(self, markers):
+        weights = np.array(
+                            [[self.n_alleles - self.ploidy for i in xrange(
+                              self.n_alleles)]
+                                for j in xrange(self.n_markers)], dtype=float)
+        nulls = np.where(markers == 0)
+        for m, i, k in zip(nulls[0], nulls[1], nulls[2]):
+            weights = self.adjust_weight_for_null(m, i, k, weights)
+        return np.divide(1., weights)
+
     def parse_data(self, data_file, cartesian, sep):
         data = np.array(np.genfromtxt(data_file,
                                       delimiter=sep,
@@ -113,41 +113,79 @@ class NbMC:
                                       skip_header=False,
                                       comments="#"))
         self.marker_names = data[0][3:]
-        self.n_markers = len(self.marker_names)
         data = data[1:][:].T
         coords = np.array(data[:][1:3].T, dtype=float)
         if cartesian:
-            self.dist = scd.pdist(coords, 'euclidean')
+            dist = scd.squareform(scd.pdist(coords, 'euclidean'))
         else:
-            self.dist = scd.pdist(coords, sph_law_of_cos)
-        markers = np.array(data[:][3:], ndmin=2)
-        markers = np.array(
-            np.core.defchararray.split(markers, sep="/").tolist(), dtype=str)
-        markers = np.core.defchararray.lower(markers)
+            dist = scd.squareform(scd.pdist(coords, sph_law_of_cos))
+        markers = np.core.defchararray.lower(
+                                            np.array(
+                                             np.core.defchararray.split(
+                                              np.array(data[:][3:], ndmin=2),
+                                              sep="/").tolist(), dtype=str))
         # order matters "na" needs to be after "nan"
         for n in ["none", "nan", "na", "x", "-", "."]:
             markers = np.core.defchararray.replace(markers, n, "0")
         markers = markers.astype(int, copy=False)
-        self.ibd = np.array([scd.pdist(i, ibd_count) for i in markers],
-                            dtype=int)
-        self.sz = np.array([scd.pdist(i, tot_count) for i in markers],
-                           dtype=int)
-        self.tsz = np.sum(self.sz, axis=1, dtype=float)
-        self.fbar = np.divide(np.sum(self.ibd, axis=1), self.tsz)
-        self.fbar_1 = 1 - self.fbar
-        self.weight = 2 / (self.tsz - 1.0)
+        self.n_markers, self.n_ind, self.ploidy = markers.shape
+        self.n_alleles = self.n_ind * self.ploidy
+        self.n_pairs = np.sum([i for i in xrange(self.n_alleles)]) - \
+            (self.n_alleles / self.ploidy)
+        iis = []
+        pair_dist = []
+        pair_list = []
+        pair_weights = []
+        weights = self.set_weights(markers)
+
+        for m in xrange(self.n_markers):
+            this_iis = []
+            this_weight = []
+            for i in xrange(self.n_ind-1):
+                for k in xrange(self.ploidy):
+                    for j in xrange(i+1, self.n_ind):
+                        for l in xrange(self.ploidy):
+                            if markers[m, i, k] == 0 or markers[m, j, l] == 0:
+                                this_iis.append(np.nan)
+                            elif markers[m, i, k] == markers[m, j, l]:
+                                this_iis.append(1)
+                            else:
+                                this_iis.append(0)
+                            this_weight.append(weights[m][i*self.ploidy+k] +
+                                               weights[m][j*self.ploidy+l])
+                            if m == 0:
+                                pair_list.append([[m, i, k], [m, j, l]])
+                                pair_dist.append(dist[i, j])
+            iis.append(this_iis)
+            pair_weights.append(this_weight)
+
+        self.dist = np.array(pair_dist)
+        self.pairs = np.array(pair_list)
+        self.weights = np.array(pair_weights)
+        self.iis = np.array(iis)
+        nans = np.isnan(self.iis)
+        self.iis_inv = np.array(np.invert(np.array(self.iis, dtype=bool)),
+                                dtype=float)
+        self.iis_inv[nans] = np.nan
+        self.fbar = np.divide(np.nansum(self.iis, axis=1),
+                              np.subtract(self.n_pairs,
+                              np.sum(np.isnan(self.iis), axis=1)))
+        self.fbar_1 = np.subtract(1, self.fbar)
+        self.unique_dists, self.unique_ID, self.unique_counts = np.unique(
+                                                           self.dist,
+                                                           return_inverse=True,
+                                                           return_counts=True)
 
     def set_taylor_terms(self):
         terms = 34
-        n = len(self.dist)
+        n = len(self.unique_dists)
         t = np.array([i for i in xrange(terms)])
-        Li = tile_reshape(np.array([sy.polylog(i + 1, self.z)
-                                    for i in xrange(terms)]), n, terms)
-        fac2 = tile_reshape(fac.factorial(2 * t), n, terms)
-        two2t = tile_reshape(2**(t + 1), n, terms)
-        sign = tile_reshape((-1)**t, n, terms)
-        self.t2 = tile_reshape(2 * t, n, terms)
-        dist = np.repeat(self.dist, terms).reshape(n, terms)
+        Li = np.array([sy.polylog(i + 1, self.z) for i in xrange(terms)])
+        fac2 = fac.factorial2(2 * t)
+        two2t = 2**(t + 1)
+        sign = (-1)**t
+        self.t2 = 2 * t
+        dist = np.repeat(self.unique_dists, terms).reshape(n, terms)
         x2t = np.power(dist, self.t2)
         self.taylor_terms = np.divide(np.multiply(np.multiply(Li, x2t), sign),
                                       np.multiply(fac2, two2t))
@@ -155,8 +193,7 @@ class NbMC:
     def t_series(self, mask, sigma):
         return ma.array(np.sum(
                         np.multiply(
-                            np.divide(1, np.power(float(sigma),
-                                                  self.t2)),
+                            np.divide(1., np.power(float(sigma), self.t2)),
                             self.taylor_terms),
                         axis=1), mask=mask)
 
@@ -185,15 +222,14 @@ class NbMC:
 
         @pymc.deterministic(plot=False)
         def Phi():
-            return ma.masked_less(np.repeat(self.fbar,
-                                            self.ibd.shape[1]).reshape(
-                                                self.ibd.shape),
-                                  0).filled(2 ** (-52))
+            return ma.masked_less(
+               np.broadcast_to(
+                 self.fbar, (self.n_markers, self.n_pairs)), 0).filled(
+                                                                    2 ** (-52))
 
         @pymc.stochastic(observed=True)
-        def marginal_bin(value=self.ibd, p=Phi, n=self.sz):
-            return np.sum((value * np.log(p) + (n - value) *
-                           np.log(1 - p)).T * self.weight)
+        def marginal_bernoulli(value=self.iis, p=Phi):
+            return np.sum(np.log(np.abs(self.iis_inv - p)) * self.weights)
 
         return locals()
 
@@ -221,24 +257,25 @@ class NbMC:
         @pymc.deterministic(plot=False, trace=False)
         def Phi(nb=nb, s=sigma):
             denom = 4.0 * pi * nb + self.g0
-            use_bessel = self.bessel(ma.masked_less_equal(self.dist, 5 * s,
+            use_bessel = self.bessel(ma.masked_less_equal(self.unique_dists,
+                                                          5 * s,
                                                           copy=True), s)
             use_taylor = self.t_series(use_bessel.mask, s)
             phi = np.divide(use_bessel.filled(use_taylor), denom)
-            phi_bar = np.divide(np.sum(np.multiply(self.sz, phi), axis=1),
-                                self.tsz)
-            return np.array((ma.masked_less((self.fbar + self.fbar_1 *
-                                             ((tile_reshape(phi,
-                                                            self.n_markers,
-                                                            len(self.dist)).T -
-                                               phi_bar) / (1 - phi_bar))),
-                                            0)).filled(2 ** (-52)),
-                            dtype=float).T
+            phi_bar = np.divide(np.sum(np.multiply(phi, self.unique_counts)),
+                                self.n_pairs)
+            p = np.divide(np.subtract(phi, phi_bar),
+                          np.subtract(1, phi_bar))
+            p = np.tile(p[self.unique_ID], (self.n_markers, 1))
+            p = (self.fbar + self.fbar_1 * p.T).T
+            p = np.array((ma.masked_less(p, 0)).filled(2 ** (-52)),
+                         dtype=float)
+            return p
 
         @pymc.stochastic(observed=True)
-        def marginal_bin(value=self.ibd, p=Phi):
-            return np.sum((value * np.log(p) + (self.sz - value) *
-                           np.log(1 - p)).T * self.weight)
+        def marginal_bernoulli(value=self.iis, p=Phi):
+            return np.sum(np.log(np.abs(self.iis_inv - p)) * self.weights)
+
         return locals()
 
     def run_model(self, it, burn, thin, plot=False):
