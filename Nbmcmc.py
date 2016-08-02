@@ -283,13 +283,14 @@ class NbMC:
                          dtype=float)
             return p
 
-        #cml = np.empty((self.n_markers, self.n_dist_class), dtype=object)
-        #cml = pymc.Container([[pymc.Binomial('cml_{}_{}'.format(i, j), n=self.n[i][j],
+        # cml = np.empty((self.n_markers, self.n_dist_class), dtype=object)
+        # cml = pymc.Container([[pymc.Binomial('cml_{}_{}'.format(i, j),
+        #                      n=self.n[i][j],
         #                      p=phi[i][j], observed=True,
         #                      value=self.iis[i][j])
         #        for i in xrange(self.n_markers)]
         #       for j in xrange(self.n_dist_class)])
-#
+
         cml_rep = np.empty((self.n_markers, self.n_dist_class), dtype=object)
         cml_rep = pymc.Container([[pymc.Binomial('cml_rep_{}_{}'.format(i, j),
                                  n=self.n[i][j],
@@ -301,8 +302,6 @@ class NbMC:
         def marginal_bin(value=self.iis, p=phi):
             return np.sum((value * np.log(p) + (self.n - value) *
                            np.log(1 - p)) * self.weights)
-
-
 
         return locals()
 
@@ -342,7 +341,8 @@ class NbMC:
         self.S.db.close()
 
     def posterior_check(self, mean, upper_quant, lower_quant):
-        blue = (0/255.0, 142/255.0, 214/255.0)
+        cb_green = (127/255.0, 191/255.0, 123/255.0)
+        cb_purple = (175/255.0, 141/255.0, 195/255.0)
         dist = self.unique_dists
         fig, ax = plt.subplots(self.n_markers, 1, sharex=True,
                                figsize=(3, 1.5 * self.n_markers))
@@ -350,14 +350,17 @@ class NbMC:
 
         plt.subplots_adjust(left=None, bottom=None, right=None, top=None,
                             wspace=None, hspace=0.3)
-        upper = upper_quant - mean
-        lower = mean - lower_quant
-        max_y = np.amax(upper_quant) * 1.1
-        min_y = np.amin(lower_quant) * 0.90
+        mean = np.divide(mean, self.n)
+        upper = np.subtract(np.divide(upper_quant, self.n), mean)
+        lower = np.subtract(mean, np.divide(lower_quant, self.n))
+
+        max_y = np.amax(upper + mean) * 1.1 if np.amax(upper + mean) * 1.1 < 0.9 else 1.1
+        min_y = np.amin(mean-lower) * 0.90 if np.amin(mean-lower) * 0.9 > 0.1 else -0.1
         for i in xrange(self.n_markers):
             ax[i].errorbar(dist, mean[i], yerr=[lower[i],
-                           upper[i]], color=blue)
-            ax[i].plot(dist, self.iis[i], 'g.',
+                           upper[i]], color=cb_purple)
+            ax[i].plot(dist, np.divide(self.iis[i], self.n[i]), '.',
+                       color=cb_green,
                        markeredgewidth=0.0)
             ax[i].set_ylim(min_y, max_y)
             ax[i].tick_params(axis="both")

@@ -32,7 +32,7 @@ parser.add_argument(
     "-u", "--mu", default=0.0001, type=float,
     help="mutation rate")
 parser.add_argument(
-    "-k", "--ploidy", default=2.0, type=float,
+    "-k", "--ploidy", default=2, type=int,
     help="ploidy")
 parser.add_argument(
     "-nb", "--nb_start", default=1.0, type=float,
@@ -56,16 +56,16 @@ parser.add_argument(
     "--nb_mu", default=1.0, type=float,
     help="mean for log normal neighborhood size prior")
 parser.add_argument(
-    "--nb_tau", default=0.001, type=float,
+    "--nb_tau", default=0.0001, type=float,
     help="precision for log normal neighborhood size prior")
 parser.add_argument(
     "--d_mu", default=1.0, type=float,
     help="mean for density log normal prior")
 parser.add_argument(
-    "--d_tau", default=0.001, type=float,
+    "--d_tau", default=0.0001, type=float,
     help="precision for density log normal prior")
 parser.add_argument(
-    "--mod_comp", default=False, type=bool,
+    "--mod_comp", action="store_true",
     help="Run DIC for null and alt model")
 parser.add_argument(
     "--cartesian", default=True, type=bool,
