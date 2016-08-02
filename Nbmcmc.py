@@ -60,8 +60,9 @@ class NbMC:
         self.unique_dists = None
         self.unique_ID = None
         self.unique_counts = None
+        self.n_dist_class = None
         self.iis = None
-        self.iis_inv = None
+        self.n = None
         self.fbar = None
         self.fbar_1 = None
         self.weights = None
@@ -158,34 +159,43 @@ class NbMC:
                                 pair_dist.append(dist[i, j])
             iis.append(this_iis)
             pair_weights.append(this_weight)
-
+        pair_weights = np.array(pair_weights)
         self.dist = np.array(pair_dist)
         self.pairs = np.array(pair_list)
-        self.weights = np.array(pair_weights)
-        self.iis = np.array(iis)
-        nans = np.isnan(self.iis)
-        self.iis_inv = np.array(np.invert(np.array(self.iis, dtype=bool)),
-                                dtype=float)
-        self.iis_inv[nans] = np.nan
-        self.fbar = np.divide(np.nansum(self.iis, axis=1),
+        iis = np.array(iis)
+        self.fbar = np.divide(np.nansum(iis, axis=1),
                               np.subtract(self.n_pairs,
-                              np.sum(np.isnan(self.iis), axis=1)))
+                              np.sum(np.isnan(iis), axis=1)))
         self.fbar_1 = np.subtract(1, self.fbar)
         self.unique_dists, self.unique_ID, self.unique_counts = np.unique(
                                                            self.dist,
                                                            return_inverse=True,
                                                            return_counts=True)
+        self.n_dist_class = len(self.unique_dists)
+        self.iis = np.array([[np.nansum(iis[j][np.where(self.unique_ID == i)])
+                            for i in xrange(self.n_dist_class)]
+                            for j in xrange(self.n_markers)])
+        self.n = np.array([[iis[j][np.where(self.unique_ID == i)].shape[0] -
+                          np.sum(
+                          np.isnan(iis[j][np.where(self.unique_ID == i)]))
+                          for i in xrange(self.n_dist_class)]
+                          for j in xrange(self.n_markers)], dtype=float)
+        self.weights = np.array([[np.nansum(pair_weights[j][np.where(
+                                self.unique_ID == i)])
+                                for i in xrange(self.n_dist_class)]
+                                for j in xrange(self.n_markers)],
+                                dtype=float)
 
     def set_taylor_terms(self):
         terms = 34
-        n = len(self.unique_dists)
         t = np.array([i for i in xrange(terms)])
         Li = np.array([sy.polylog(i + 1, self.z) for i in xrange(terms)])
         fac2 = fac.factorial2(2 * t)
         two2t = 2**(t + 1)
         sign = (-1)**t
         self.t2 = 2 * t
-        dist = np.repeat(self.unique_dists, terms).reshape(n, terms)
+        dist = np.repeat(self.unique_dists, terms).reshape(self.n_dist_class,
+                                                           terms)
         x2t = np.power(dist, self.t2)
         self.taylor_terms = np.divide(np.multiply(np.multiply(Li, x2t), sign),
                                       np.multiply(fac2, two2t))
@@ -221,15 +231,16 @@ class NbMC:
             return 4.0 * nb * pi
 
         @pymc.deterministic(plot=False)
-        def Phi():
+        def phi():
             return ma.masked_less(
-               np.broadcast_to(
-                 self.fbar, (self.n_markers, self.n_pairs)), 0).filled(
-                                                                    2 ** (-52))
+               np.tile(
+                 self.fbar, (self.n_dist_class, 1)), 0).filled(
+                                                                2 ** (-52)).T
 
         @pymc.stochastic(observed=True)
-        def marginal_bernoulli(value=self.iis, p=Phi):
-            return np.sum(np.log(np.abs(self.iis_inv - p)) * self.weights)
+        def marginal_binomial(value=self.iis, p=phi):
+            return np.sum((value * np.log(p) + (self.n - value) *
+                           np.log(1 - p)) * self.weights)
 
         return locals()
 
@@ -243,7 +254,7 @@ class NbMC:
 
         @pymc.deterministic
         def sigma(nb=nb, d=density):
-            return sqrt(nb / float(d))
+            return sqrt(nb / d)
 
         @pymc.deterministic
         def ss(s=sigma):
@@ -255,26 +266,43 @@ class NbMC:
 
         # deterministic function to calculate pIBD from Wright Malecot formula
         @pymc.deterministic(plot=False, trace=False)
-        def Phi(nb=nb, s=sigma):
+        def phi(nb=nb, s=sigma):
             denom = 4.0 * pi * nb + self.g0
             use_bessel = self.bessel(ma.masked_less_equal(self.unique_dists,
                                                           5 * s,
                                                           copy=True), s)
             use_taylor = self.t_series(use_bessel.mask, s)
-            phi = np.divide(use_bessel.filled(use_taylor), denom)
-            phi_bar = np.divide(np.sum(np.multiply(phi, self.unique_counts)),
-                                self.n_pairs)
-            p = np.divide(np.subtract(phi, phi_bar),
-                          np.subtract(1, phi_bar))
-            p = np.tile(p[self.unique_ID], (self.n_markers, 1))
+            phi = np.tile(np.divide(use_bessel.filled(use_taylor), denom),
+                          (self.n_markers, 1))
+            phi_bar = np.divide(np.sum(np.multiply(self.n, phi), axis=1),
+                                np.sum(self.n, axis=1))
+            p = np.divide(np.subtract(phi.T, phi_bar),
+                          np.subtract(1, phi_bar)).T
             p = (self.fbar + self.fbar_1 * p.T).T
             p = np.array((ma.masked_less(p, 0)).filled(2 ** (-52)),
                          dtype=float)
             return p
 
+        #cml = np.empty((self.n_markers, self.n_dist_class), dtype=object)
+        #cml = pymc.Container([[pymc.Binomial('cml_{}_{}'.format(i, j), n=self.n[i][j],
+        #                      p=phi[i][j], observed=True,
+        #                      value=self.iis[i][j])
+        #        for i in xrange(self.n_markers)]
+        #       for j in xrange(self.n_dist_class)])
+#
+        cml_rep = np.empty((self.n_markers, self.n_dist_class), dtype=object)
+        cml_rep = pymc.Container([[pymc.Binomial('cml_rep_{}_{}'.format(i, j),
+                                 n=self.n[i][j],
+                                 p=phi[i][j])
+                                 for i in xrange(self.n_markers)]
+                                 for j in xrange(self.n_dist_class)])
+
         @pymc.stochastic(observed=True)
-        def marginal_bernoulli(value=self.iis, p=Phi):
-            return np.sum(np.log(np.abs(self.iis_inv - p)) * self.weights)
+        def marginal_bin(value=self.iis, p=phi):
+            return np.sum((value * np.log(p) + (self.n - value) *
+                           np.log(1 - p)) * self.weights)
+
+
 
         return locals()
 
@@ -285,14 +313,60 @@ class NbMC:
             self.M, db='pickle', calc_deviance=True,
             dbname=dbname)
         self.S.sample(iter=it, burn=burn, thin=thin)
-        self.S.summary()
+        print self.S.dic
+
+
+        self.S.neigh.summary()
+        self.S.sigma.summary()
+        self.S.density.summary()
         self.S.write_csv(self.out_path + self.out_file + ".csv",
                          variables=["sigma", "ss", "density", "nb", "neigh"])
-        # self.S.stats()
         if plot:
-            pymc.Matplot.plot(self.S, format="pdf", path=self.out_path,
+            pymc.Matplot.plot(self.S.neigh, format="pdf", path=self.out_path,
                               suffix="_" + self.out_file)
+            pymc.Matplot.plot(self.S.sigma, format="pdf", path=self.out_path,
+                              suffix="_" + self.out_file)
+            pymc.Matplot.plot(self.S.density, format="pdf", path=self.out_path,
+                              suffix="_" + self.out_file)
+
+            upper_n = np.array([[self.S.stats()["cml_rep_{}_{}".format(
+                        i, j)]["quantiles"][97.5]
+                        for i in xrange(self.n_markers)]
+                       for j in xrange(self.n_dist_class)]).T
+            lower_n = np.array([[self.S.stats()["cml_rep_{}_{}".format(
+                        i, j)]["quantiles"][2.5]
+                        for i in xrange(self.n_markers)]
+                       for j in xrange(self.n_dist_class)]).T
+            mean_n = np.array([[self.S.stats()["cml_rep_{}_{}".format(
+                        i, j)]["mean"]
+                       for i in xrange(self.n_markers)]
+                      for j in xrange(self.n_dist_class)]).T
+            self.posterior_check(mean_n, upper_n, lower_n)
         self.S.db.close()
+
+    def posterior_check(self, mean, upper_quant, lower_quant):
+        blue = (0/255.0, 142/255.0, 214/255.0)
+        dist = self.unique_dists
+        fig, ax = plt.subplots(self.n_markers, 1, sharex=True,
+                               figsize=(3, 1.5 * self.n_markers))
+        fig.tight_layout()
+
+        plt.subplots_adjust(left=None, bottom=None, right=None, top=None,
+                            wspace=None, hspace=0.3)
+        upper = upper_quant - mean
+        lower = mean - lower_quant
+        max_y = np.amax(upper_quant) * 1.1
+        min_y = np.amin(lower_quant) * 0.90
+        for i in xrange(self.n_markers):
+            ax[i].errorbar(dist, mean[i], yerr=[lower[i],
+                           upper[i]], color=blue)
+            ax[i].plot(dist, self.iis[i], 'g.',
+                       markeredgewidth=0.0)
+            ax[i].set_ylim(min_y, max_y)
+            ax[i].tick_params(axis="both")
+            ax[i].set_ylabel(self.marker_names[i], fontsize=9)
+        plt.savefig(self.out_path+self.out_file+"_ppc.pdf",
+                    bbox_inches='tight')
 
     def model_comp(self, it, burn, thin):
         NM = pymc.Model(self.make_null_model())
