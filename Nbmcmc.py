@@ -313,9 +313,6 @@ class NbMC:
             self.M, db='pickle', calc_deviance=True,
             dbname=dbname)
         self.S.sample(iter=it, burn=burn, thin=thin)
-        print self.S.dic
-
-
         self.S.neigh.summary()
         self.S.sigma.summary()
         self.S.density.summary()
