@@ -375,19 +375,11 @@ class NbMC:
         NS.sample(iter=it, burn=burn, thin=thin)
         NS.write_csv(self.out_path + self.out_file + "_null.csv",
                      variables=["sigma", "ss", "density", "nb", "neigh"])
-        ha = pymc.MAP(self.M)
-        ho = pymc.MAP(NM)
-        ha.fit()
-        ho.fit()
-        haBIC = ha.BIC
-        hoBIC = ho.BIC
-        haAIC = ha.AIC
-        hoAIC = ho.AIC
-        print hoAIC, hoBIC
-        print haAIC, haBIC
+        ha = self.S.DIC
+        ho = NS.DIC
         com_out = open(self.out_path + self.out_file + "_model_comp.txt", 'w')
-        com_out.write("Null Hypothesis AIC: " + str(hoAIC) + "\n")
-        com_out.write("Alt Hypothesis AIC: " + str(haAIC) + "\n")
-        com_out.write("Null Hypothesis BIC: " + str(hoBIC) + "\n")
-        com_out.write("Alt Hypothesis BIC: " + str(haBIC) + "\n")
+        com_out.write("Null Hypothesis DIC: " + str(ho) + "\n")
+        com_out.write("Alt Hypothesis DIC: " + str(ha) + "\n")
+        com_out.write("Delta DIC: " + str(ho - ha) + "\n")
+        com_out.write("Rel. Delta DIC: " + str((ho - ha)/ho) + "\n")
         NS.db.close()
