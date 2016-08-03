@@ -5,11 +5,24 @@ import mpmath as sy
 import scipy.misc as fac
 import scipy.special as sp
 import scipy.spatial.distance as scd
+import scipy.stats as ss
 import pymc
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 
 plt.style.use('ggplot')
 
+blue = (0/255.0, 142/255.0, 214/255.0)
+grey = (79/255.0, 85/255.0, 87/255.0)
+lite_grey = (175/255.0, 165/255.0, 147/255.0)
+
+# Set the default color cycle
+mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=[blue, grey])
+
+
+def log_normal_pdf(x, mu, sigma):
+    return 1/(sqrt(2 * pi) * sigma * x) * exp((-(log(x)-mu)**2)/(2*sigma**2))
+log_norm_vec = np.vectorize(log_normal_pdf)
 
 def sph_law_of_cos(u, v):
     '''Returns distance between two geographic
@@ -305,7 +318,8 @@ class NbMC:
 
         return locals()
 
-    def run_model(self, it, burn, thin, plot=False):
+    def run_model(self, it, burn, thin, plot_diog=False, plot_ppc=False,
+                  plot_prior=False):
         dbname = self.out_path + self.out_file + ".pickle"
         self.M = pymc.Model(self.make_model())
         self.S = pymc.MCMC(
@@ -317,35 +331,60 @@ class NbMC:
         self.S.density.summary()
         self.S.write_csv(self.out_path + self.out_file + ".csv",
                          variables=["sigma", "ss", "density", "nb", "neigh"])
-        if plot:
-            pymc.Matplot.plot(self.S.neigh, format="pdf", path=self.out_path,
-                              suffix="_" + self.out_file)
-            pymc.Matplot.plot(self.S.sigma, format="pdf", path=self.out_path,
-                              suffix="_" + self.out_file)
-            pymc.Matplot.plot(self.S.density, format="pdf", path=self.out_path,
-                              suffix="_" + self.out_file)
+        if plot_prior:
+            self.plot_prior()
+        if plot_ppc:
+            self.posterior_check()
+        if plot_diog:
+            self.plot_diognostics()
 
-            upper_n = np.array([[self.S.stats()["cml_rep_{}_{}".format(
-                        i, j)]["quantiles"][97.5]
-                        for i in xrange(self.n_markers)]
-                       for j in xrange(self.n_dist_class)]).T
-            lower_n = np.array([[self.S.stats()["cml_rep_{}_{}".format(
-                        i, j)]["quantiles"][2.5]
-                        for i in xrange(self.n_markers)]
-                       for j in xrange(self.n_dist_class)]).T
-            mean_n = np.array([[self.S.stats()["cml_rep_{}_{}".format(
-                        i, j)]["mean"]
-                       for i in xrange(self.n_markers)]
-                      for j in xrange(self.n_dist_class)]).T
-            self.posterior_check(mean_n, upper_n, lower_n)
         self.S.db.close()
 
-    def posterior_check(self, mean, upper_quant, lower_quant):
-        cb_green = (127/255.0, 191/255.0, 123/255.0)
-        cb_purple = (175/255.0, 141/255.0, 195/255.0)
+    def plot_diognostics(self):
+        pymc.Matplot.plot(self.S.neigh, format="pdf", path=self.out_path,
+                          suffix="_" + self.out_file)
+        pymc.Matplot.plot(self.S.sigma, format="pdf", path=self.out_path,
+                          suffix="_" + self.out_file)
+        pymc.Matplot.plot(self.S.density, format="pdf", path=self.out_path,
+                          suffix="_" + self.out_file)
+
+    def plot_prior(self):
+        print "Plotting neighborhood size prior vs. marginal posterior\n"
+        trace = self.S.neigh.trace()
+        x = np.linspace(0, np.max(trace)*1.1, 10000)[1:]
+        y = log_norm_vec(x, self.nb_prior_mu, 1/sqrt(self.nb_prior_tau))
+
+        y_vals, x_vals, _ = plt.hist(trace, normed=True, color=grey)
+
+        plt.axhline(y=0, ls="solid", color=lite_grey)
+        plt.axvline(x=0, ls="solid", color=lite_grey)
+        plt.plot(x, y, '-', lw=1, label='Log-Normal Prior', color=blue)
+        plt.ylim(-.1, max(max(y),max(y_vals))*1.1)
+        plt.xlim(-.1, max(x_vals)*1.1)
+        plt.savefig(self.out_path+self.out_file+"_prior.pdf",
+                    bbox_inches='tight')
+        plt.close()
+
+    def posterior_check(self):
+        print "Plotting Posterior Predictive Check\n"
+
+        upper_quant = np.array([[self.S.stats()["cml_rep_{}_{}".format(
+                    i, j)]["quantiles"][97.5]
+                    for i in xrange(self.n_markers)]
+                   for j in xrange(self.n_dist_class)]).T
+        lower_quant = np.array([[self.S.stats()["cml_rep_{}_{}".format(
+                    i, j)]["quantiles"][2.5]
+                    for i in xrange(self.n_markers)]
+                   for j in xrange(self.n_dist_class)]).T
+        mean = np.array([[self.S.stats()["cml_rep_{}_{}".format(
+                    i, j)]["mean"]
+                   for i in xrange(self.n_markers)]
+                  for j in xrange(self.n_dist_class)]).T
+
         dist = self.unique_dists
         fig, ax = plt.subplots(self.n_markers, 1, sharex=True,
                                figsize=(3, 1.5 * self.n_markers))
+
         fig.tight_layout()
 
         plt.subplots_adjust(left=None, bottom=None, right=None, top=None,
@@ -354,21 +393,25 @@ class NbMC:
         upper = np.subtract(np.divide(upper_quant, self.n), mean)
         lower = np.subtract(mean, np.divide(lower_quant, self.n))
 
-        max_y = np.amax(upper + mean) * 1.1 if np.amax(upper + mean) * 1.1 < 0.9 else 1.1
-        min_y = np.amin(mean-lower) * 0.90 if np.amin(mean-lower) * 0.9 > 0.1 else -0.1
+        max_y = np.amax(upper + mean) * 1.1
+        min_y = np.amin(mean-lower) * 0.90
         for i in xrange(self.n_markers):
+            ax[i].axhline(y=self.fbar[i], color=lite_grey, ls='solid',
+                          zorder=0)
             ax[i].errorbar(dist, mean[i], yerr=[lower[i],
-                           upper[i]], color=cb_purple)
+                           upper[i]], color=blue, zorder=1)
             ax[i].plot(dist, np.divide(self.iis[i], self.n[i]), '.',
-                       color=cb_green,
-                       markeredgewidth=0.0)
+                       color=grey,
+                       markeredgewidth=0.0, zorder=2)
             ax[i].set_ylim(min_y, max_y)
             ax[i].tick_params(axis="both")
             ax[i].set_ylabel(self.marker_names[i], fontsize=9)
+        fig.text(0.5, 0.0, 'Distance (Meters)', ha='center', fontsize=9)
         plt.savefig(self.out_path+self.out_file+"_ppc.pdf",
                     bbox_inches='tight')
 
     def model_comp(self, it, burn, thin):
+        print "Running Model Comparison\n"
         NM = pymc.Model(self.make_null_model())
         NS = pymc.MCMC(NM, db='pickle', calc_deviance=True,
                        dbname=self.out_path + self.out_file + "_null.pickle")

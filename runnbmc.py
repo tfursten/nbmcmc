@@ -50,8 +50,14 @@ parser.add_argument(
     "-th", "--thin", default=1, type=int,
     help="thin the MCMC chains")
 parser.add_argument(
-    "-p", "--plot", action="store_true",
-    help="output plots")
+    "--plot_diog", action="store_true",
+    help="output diognostic plots")
+parser.add_argument(
+    "--plot_ppc", action="store_true",
+    help="output posterior predictive check plots")
+parser.add_argument(
+    "--plot_prior", action="store_true",
+    help="output prior and marginal posterior plot")
 parser.add_argument(
     "--nb_mu", default=1.0, type=float,
     help="mean for log normal neighborhood size prior")
@@ -110,8 +116,9 @@ sep = {'comma': ',',
        'space': ' ',
        'tab': '\t',
        'semicolon': ';'}[args.sep]
-param = open(args.out_path+args.outfile+"_params.txt", 'w')
+param = open(args.out_path+args.outfile + "_params.txt", 'w')
 param.write(s)
+param.close()
 # intialize model
 nbmc = NbMC(args.mu, args.nb_start, args.density_start,
             args.in_path+args.infile, args.outfile, args.out_path,
@@ -119,11 +126,13 @@ nbmc = NbMC(args.mu, args.nb_start, args.density_start,
 # Set prior parameters
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
 # Run Model
-nbmc.run_model(args.iter, args.burn, args.thin, args.plot)
+nbmc.run_model(args.iter, args.burn, args.thin, plot_diog=args.plot_diog,
+               plot_ppc=args.plot_ppc, plot_prior=args.plot_prior)
 # Run model comparison
 if args.mod_comp:
     nbmc.model_comp(args.iter, args.burn, args.thin)
 
 end_time = time.time() - start_time
+param = open(args.out_path + args.outfile + "_params.txt", 'a')
 param.write("Run Time:" + str(end_time) + "\n")
 param.close()
