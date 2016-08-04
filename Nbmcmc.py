@@ -16,13 +16,11 @@ blue = (0/255.0, 142/255.0, 214/255.0)
 grey = (79/255.0, 85/255.0, 87/255.0)
 lite_grey = (175/255.0, 165/255.0, 147/255.0)
 
-# Set the default color cycle
-mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=[blue, grey])
-
 
 def log_normal_pdf(x, mu, sigma):
     return 1/(sqrt(2 * pi) * sigma * x) * exp((-(log(x)-mu)**2)/(2*sigma**2))
 log_norm_vec = np.vectorize(log_normal_pdf)
+
 
 def sph_law_of_cos(u, v):
     '''Returns distance between two geographic
@@ -81,7 +79,6 @@ class NbMC:
         self.weights = None
         self.n_alleles = None
         self.n_ind = None
-
         self.parse_data(data_file, cartesian, sep)
         self.set_taylor_terms()
         self.nb_prior_mu = None
@@ -175,7 +172,7 @@ class NbMC:
         pair_weights = np.array(pair_weights)
         self.dist = np.array(pair_dist)
         self.pairs = np.array(pair_list)
-        iis = np.array(iis)
+        iis = np.array(iis, dtype=float)
         self.fbar = np.divide(np.nansum(iis, axis=1),
                               np.subtract(self.n_pairs,
                               np.sum(np.isnan(iis), axis=1)))
@@ -187,7 +184,7 @@ class NbMC:
         self.n_dist_class = len(self.unique_dists)
         self.iis = np.array([[np.nansum(iis[j][np.where(self.unique_ID == i)])
                             for i in xrange(self.n_dist_class)]
-                            for j in xrange(self.n_markers)])
+                            for j in xrange(self.n_markers)], dtype=float)
         self.n = np.array([[iis[j][np.where(self.unique_ID == i)].shape[0] -
                           np.sum(
                           np.isnan(iis[j][np.where(self.unique_ID == i)]))
@@ -360,8 +357,8 @@ class NbMC:
         plt.axhline(y=0, ls="solid", color=lite_grey)
         plt.axvline(x=0, ls="solid", color=lite_grey)
         plt.plot(x, y, '-', lw=1, label='Log-Normal Prior', color=blue)
-        plt.ylim(-.1, max(max(y),max(y_vals))*1.1)
-        plt.xlim(-.1, max(x_vals)*1.1)
+        plt.ylim(-0.1, max(max(y), max(y_vals)) * 1.1)
+        plt.xlim(-0.1, max(x_vals) * 1.1)
         plt.savefig(self.out_path+self.out_file+"_prior.pdf",
                     bbox_inches='tight')
         plt.close()

@@ -32,9 +32,6 @@ parser.add_argument(
     "-u", "--mu", default=0.0001, type=float,
     help="mutation rate")
 parser.add_argument(
-    "-k", "--ploidy", default=2, type=int,
-    help="ploidy")
-parser.add_argument(
     "-nb", "--nb_start", default=1.0, type=float,
     help="starting value for Neighborhood Size")
 parser.add_argument(
@@ -84,7 +81,6 @@ start_time = time.time()
 s = str("Outfile: {}{}\n"
         "Infile: {}{}\n"
         "Mu: {}\n"
-        "Ploidy: {}\n"
         "Nb Start: {}\n"
         "Density Start: {}\n"
         "Nb Mu: {}\n"
@@ -97,7 +93,6 @@ s = str("Outfile: {}{}\n"
         "Cartesian: {}\n").format(args.out_path, args.outfile,
                                   args.in_path, args.infile,
                                   args.mu,
-                                  args.ploidy,
                                   args.nb_start,
                                   args.density_start,
                                   args.nb_mu,
