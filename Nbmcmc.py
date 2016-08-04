@@ -92,9 +92,9 @@ class NbMC:
         self.S = None
 
     def set_prior_params(self, n_mu, n_tau, d_mu, d_tau):
-        self.nb_prior_mu = n_mu
+        self.nb_prior_mu = log(n_mu)
         self.nb_prior_tau = n_tau
-        self.d_prior_mu = d_mu
+        self.d_prior_mu = log(d_mu)
         self.d_prior_tau = d_tau
 
     def adjust_weight_for_null(self, marker_idx, ind_idx, allele_idx, weights):
@@ -339,6 +339,7 @@ class NbMC:
             self.plot_diognostics()
 
         self.S.db.close()
+        return len(self.S.neigh.trace())
 
     def plot_diognostics(self):
         pymc.Matplot.plot(self.S.neigh, format="pdf", path=self.out_path,

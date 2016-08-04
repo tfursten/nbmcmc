@@ -81,7 +81,6 @@ args = parser.parse_args()
 
 start_time = time.time()
 
-mcmctot = args.iter / args.thin
 s = str("Outfile: {}{}\n"
         "Infile: {}{}\n"
         "Mu: {}\n"
@@ -95,7 +94,6 @@ s = str("Outfile: {}{}\n"
         "MCMC iterations: {}\n"
         "MCMC burn: {}\n"
         "MCMC thin: {}\n"
-        "MCMC total: {}\n"
         "Cartesian: {}\n").format(args.out_path, args.outfile,
                                   args.in_path, args.infile,
                                   args.mu,
@@ -109,7 +107,6 @@ s = str("Outfile: {}{}\n"
                                   args.iter,
                                   args.burn,
                                   args.thin,
-                                  mcmctot,
                                   args.cartesian)
 
 sep = {'comma': ',',
@@ -126,7 +123,7 @@ nbmc = NbMC(args.mu, args.nb_start, args.density_start,
 # Set prior parameters
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
 # Run Model
-nbmc.run_model(args.iter, args.burn, args.thin, plot_diog=args.plot_diog,
+total = nbmc.run_model(args.iter, args.burn, args.thin, plot_diog=args.plot_diog,
                plot_ppc=args.plot_ppc, plot_prior=args.plot_prior)
 # Run model comparison
 if args.mod_comp:
@@ -134,5 +131,6 @@ if args.mod_comp:
 
 end_time = time.time() - start_time
 param = open(args.out_path + args.outfile + "_params.txt", 'a')
+param.write("MCMC Total Values: " + str(total) + "\n")
 param.write("Run Time:" + str(end_time) + "\n")
 param.close()
