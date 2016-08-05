@@ -352,7 +352,7 @@ class NbMC:
         x = np.linspace(0, np.max(trace)*1.1, 10000)[1:]
         y = log_norm_vec(x, self.nb_prior_mu, 1/sqrt(self.nb_prior_tau))
 
-        y_vals, x_vals, _ = plt.hist(trace, normed=True, color=grey)
+        y_vals, x_vals, _ = plt.hist(trace, normed=True, color=grey, bins=10)
 
         plt.axhline(y=0, ls="solid", color=lite_grey)
         plt.axvline(x=0, ls="solid", color=lite_grey)
