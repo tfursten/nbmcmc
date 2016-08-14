@@ -96,15 +96,15 @@ class NbMC:
 
     def adjust_weight_for_null(self, marker_idx, ind_idx, allele_idx, weights):
         '''In the case of a null allele the weight (number of comparisons) for
-        every other individual is reduced by 1 and the weight is Inf for the
-        null allele (1/Inf = 0). The weight for all other alleles within this
+        every other individual is reduced by 1 and the weight is nan for the
+        null allele. The weight for all other alleles within this
         individual will remain the same.'''
         idx1 = int(ind_idx * self.ploidy)
         idx2 = int(idx1 + self.ploidy)
         weights[marker_idx][idx1:idx2] = np.add(
                                         weights[marker_idx][idx1:idx2], 1)
         weights[marker_idx][:] = np.subtract(weights[marker_idx][:], 1)
-        weights[marker_idx][idx1 + allele_idx] = np.Inf
+        weights[marker_idx][idx1 + allele_idx] = np.nan
         return weights
 
     def set_weights(self, markers):
@@ -115,7 +115,7 @@ class NbMC:
         nulls = np.where(markers == 0)
         for m, i, k in zip(nulls[0], nulls[1], nulls[2]):
             weights = self.adjust_weight_for_null(m, i, k, weights)
-        return np.divide(1., weights)
+        return weights
 
     def parse_data(self, data_file, cartesian, sep):
         data = np.array(np.genfromtxt(data_file,
@@ -162,7 +162,7 @@ class NbMC:
                                 this_iis.append(1)
                             else:
                                 this_iis.append(0)
-                            this_weight.append(weights[m][i*self.ploidy+k] +
+                            this_weight.append(weights[m][i*self.ploidy+k] *
                                                weights[m][j*self.ploidy+l])
                             if m == 0:
                                 pair_list.append([[m, i, k], [m, j, l]])
@@ -190,7 +190,7 @@ class NbMC:
                           np.isnan(iis[j][np.where(self.unique_ID == i)]))
                           for i in xrange(self.n_dist_class)]
                           for j in xrange(self.n_markers)], dtype=float)
-        self.weights = np.array([[np.nansum(pair_weights[j][np.where(
+        self.weights = 1/np.array([[np.nanprod(pair_weights[j][np.where(
                                 self.unique_ID == i)])
                                 for i in xrange(self.n_dist_class)]
                                 for j in xrange(self.n_markers)],
