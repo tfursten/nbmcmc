@@ -73,10 +73,11 @@ class NbMC:
         self.unique_counts = None
         self.n_dist_class = None
         self.iis = None
+        self.iis_scaled = None
         self.n = None
+        self.n_scaled = None
         self.fbar = None
         self.fbar_1 = None
-        self.weights = None
         self.n_alleles = None
         self.n_ind = None
         self.parse_data(data_file, cartesian, sep)
@@ -93,29 +94,6 @@ class NbMC:
         self.nb_prior_tau = n_tau
         self.d_prior_mu = d_mu
         self.d_prior_tau = d_tau
-
-    def adjust_weight_for_null(self, marker_idx, ind_idx, allele_idx, weights):
-        '''In the case of a null allele the weight (number of comparisons) for
-        every other individual is reduced by 1 and the weight is nan for the
-        null allele. The weight for all other alleles within this
-        individual will remain the same.'''
-        idx1 = int(ind_idx * self.ploidy)
-        idx2 = int(idx1 + self.ploidy)
-        weights[marker_idx][idx1:idx2] = np.add(
-                                        weights[marker_idx][idx1:idx2], 1)
-        weights[marker_idx][:] = np.subtract(weights[marker_idx][:], 1)
-        weights[marker_idx][idx1 + allele_idx] = np.nan
-        return weights
-
-    def set_weights(self, markers):
-        weights = np.array(
-                            [[self.n_alleles - self.ploidy for i in xrange(
-                              self.n_alleles)]
-                                for j in xrange(self.n_markers)], dtype=float)
-        nulls = np.where(markers == 0)
-        for m, i, k in zip(nulls[0], nulls[1], nulls[2]):
-            weights = self.adjust_weight_for_null(m, i, k, weights)
-        return weights
 
     def parse_data(self, data_file, cartesian, sep):
         data = np.array(np.genfromtxt(data_file,
@@ -146,8 +124,6 @@ class NbMC:
         iis = []
         pair_dist = []
         pair_list = []
-        pair_weights = []
-        weights = self.set_weights(markers)
 
         for m in xrange(self.n_markers):
             this_iis = []
@@ -162,14 +138,10 @@ class NbMC:
                                 this_iis.append(1)
                             else:
                                 this_iis.append(0)
-                            this_weight.append(weights[m][i*self.ploidy+k] *
-                                               weights[m][j*self.ploidy+l])
                             if m == 0:
                                 pair_list.append([[m, i, k], [m, j, l]])
                                 pair_dist.append(dist[i, j])
             iis.append(this_iis)
-            pair_weights.append(this_weight)
-        pair_weights = np.array(pair_weights)
         self.dist = np.array(pair_dist)
         self.pairs = np.array(pair_list)
         iis = np.array(iis, dtype=float)
@@ -190,11 +162,9 @@ class NbMC:
                           np.isnan(iis[j][np.where(self.unique_ID == i)]))
                           for i in xrange(self.n_dist_class)]
                           for j in xrange(self.n_markers)], dtype=float)
-        self.weights = 1/np.array([[np.nanprod(pair_weights[j][np.where(
-                                self.unique_ID == i)])
-                                for i in xrange(self.n_dist_class)]
-                                for j in xrange(self.n_markers)],
-                                dtype=float)
+        scale_factor = (self.n_alleles//2)/np.nansum(self.n, axis=1)
+        self.iis_scaled = np.multiply(self.iis.T, scale_factor).T
+        self.n_scaled = np.multiply(self.n.T, scale_factor).T
 
     def set_taylor_terms(self):
         terms = 34
@@ -248,9 +218,9 @@ class NbMC:
                                                                 2 ** (-52)).T
 
         @pymc.stochastic(observed=True)
-        def marginal_binomial(value=self.iis, p=phi):
-            return np.sum((value * np.log(p) + (self.n - value) *
-                           np.log(1 - p)) * self.weights)
+        def marginal_binomial(value=self.iis_scaled, p=phi):
+            return np.sum((value * np.log(p) + (self.n_scaled - value) *
+                           np.log(1 - p)))
 
         return locals()
 
@@ -309,9 +279,9 @@ class NbMC:
                                  for j in xrange(self.n_dist_class)])
 
         @pymc.stochastic(observed=True)
-        def marginal_bin(value=self.iis, p=phi):
-            return np.sum((value * np.log(p) + (self.n - value) *
-                           np.log(1 - p)) * self.weights)
+        def marginal_bin(value=self.iis_scaled, p=phi):
+            return np.sum((value * np.log(p) + (self.n_scaled - value) *
+                           np.log(1 - p)))
 
         return locals()
 
