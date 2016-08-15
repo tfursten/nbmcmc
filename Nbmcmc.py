@@ -118,9 +118,10 @@ class NbMC:
             markers = np.core.defchararray.replace(markers, n, "0")
         markers = markers.astype(int, copy=False)
         self.n_markers, self.n_ind, self.ploidy = markers.shape
-        self.n_alleles = self.n_ind * self.ploidy
-        self.n_pairs = np.sum([i for i in xrange(self.n_alleles)]) - \
-            (self.n_alleles / self.ploidy)
+        self.n_alleles = np.apply_over_axes(np.sum,
+                                            np.array(markers,
+                                                     dtype=bool),
+                                            [1, 2]).flatten()
         iis = []
         pair_dist = []
         pair_list = []
@@ -145,10 +146,6 @@ class NbMC:
         self.dist = np.array(pair_dist)
         self.pairs = np.array(pair_list)
         iis = np.array(iis, dtype=float)
-        self.fbar = np.divide(np.nansum(iis, axis=1),
-                              np.subtract(self.n_pairs,
-                              np.sum(np.isnan(iis), axis=1)))
-        self.fbar_1 = np.subtract(1, self.fbar)
         self.unique_dists, self.unique_ID, self.unique_counts = np.unique(
                                                            self.dist,
                                                            return_inverse=True,
@@ -162,6 +159,9 @@ class NbMC:
                           np.isnan(iis[j][np.where(self.unique_ID == i)]))
                           for i in xrange(self.n_dist_class)]
                           for j in xrange(self.n_markers)], dtype=float)
+        self.fbar = np.divide(np.nansum(self.iis, axis=1),
+                              np.nansum(self.n, axis=1))
+        self.fbar_1 = np.subtract(1, self.fbar)
         scale_factor = (self.n_alleles//2)/np.nansum(self.n, axis=1)
         self.iis_scaled = np.multiply(self.iis.T, scale_factor).T
         self.n_scaled = np.multiply(self.n.T, scale_factor).T
