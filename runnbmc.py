@@ -31,7 +31,7 @@ parser.add_argument(
 parser.add_argument(
     "--dist_bins", nargs='+', type=float, required=True,
     help="List of bins for distance classes or single integer"
-         "represending the number of bins to be created")
+         "represending the number of bins to be created"
 )
 parser.add_argument(
     "-u", "--mu", default=0.0001, type=float,
