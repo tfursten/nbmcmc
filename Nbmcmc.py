@@ -49,13 +49,14 @@ def sph_law_of_cos(u, v):
 class NbMC:
 
     def __init__(self, mu, nb_start, density_start,
-                 data_file, out_file, out_path="./", sep="\t",
+                 data_file, out_file, bins, out_path="./", sep="\t",
                  cartesian=True):
         self.mu = mu
         self.ploidy = None
         self.data_file = data_file
         self.out_file = out_file
         self.out_path = out_path
+        self.bins = np.array(bins, ndmin=1)
         self.mu2 = -2.0 * self.mu
         self.z = exp(self.mu2)
         self.sqrz = sqrt(1.0 - self.z)
@@ -68,9 +69,9 @@ class NbMC:
         self.n_pairs = None
         self.marker_names = None
         self.dist = None
+        self.dist_class = None
+        self.dist_avg = None
         self.unique_dists = None
-        self.unique_ID = None
-        self.unique_counts = None
         self.n_dist_class = None
         self.iis = None
         self.iis_scaled = None
@@ -146,18 +147,23 @@ class NbMC:
         self.dist = np.array(pair_dist)
         self.pairs = np.array(pair_list)
         iis = np.array(iis, dtype=float)
-        self.unique_dists, self.unique_ID, self.unique_counts = np.unique(
-                                                           self.dist,
-                                                           return_inverse=True,
-                                                           return_counts=True)
-        self.n_dist_class = len(self.unique_dists)
-        self.iis = np.array([[np.nansum(iis[j][np.where(self.unique_ID == i)])
-                            for i in xrange(self.n_dist_class)]
+        # set distance classes
+        # if bins is an integer evenly divide distances into n bins
+        self.bins = np.arange(0, 14, 1)  # JUST FOR TESTING ***REMOVE****
+        if self.bins.size == 1:
+            self.bins = np.linspace(0, np.max(self.dist), int(self.bins))
+        self.dist_class = np.digitize(self.dist, self.bins)
+        self.unique_dists = np.unique(self.dist_class)
+        self.n_dist_class = self.unique_dists.size
+        self.dist_avg = np.array([np.mean(self.dist[np.where(self.dist_class == d)])
+                                  for d in self.unique_dists])
+        self.iis = np.array([[np.nansum(iis[j][np.where(self.dist_class == i)])
+                            for i in self.unique_dists]
                             for j in xrange(self.n_markers)], dtype=float)
-        self.n = np.array([[iis[j][np.where(self.unique_ID == i)].shape[0] -
+        self.n = np.array([[iis[j][np.where(self.dist_class == i)].shape[0] -
                           np.sum(
-                          np.isnan(iis[j][np.where(self.unique_ID == i)]))
-                          for i in xrange(self.n_dist_class)]
+                          np.isnan(iis[j][np.where(self.dist_class == i)]))
+                          for i in self.unique_dists]
                           for j in xrange(self.n_markers)], dtype=float)
         self.fbar = np.divide(np.nansum(self.iis, axis=1),
                               np.nansum(self.n, axis=1))
@@ -174,8 +180,8 @@ class NbMC:
         two2t = 2**(t + 1)
         sign = (-1)**t
         self.t2 = 2 * t
-        dist = np.repeat(self.unique_dists, terms).reshape(self.n_dist_class,
-                                                           terms)
+        dist = np.repeat(self.dist_avg, terms).reshape(self.n_dist_class,
+                                                       terms)
         x2t = np.power(dist, self.t2)
         self.taylor_terms = np.divide(np.multiply(np.multiply(Li, x2t), sign),
                                       np.multiply(fac2, two2t))
@@ -248,7 +254,7 @@ class NbMC:
         @pymc.deterministic(plot=False, trace=False)
         def phi(nb=nb, s=sigma):
             denom = 4.0 * pi * nb + self.g0
-            use_bessel = self.bessel(ma.masked_less_equal(self.unique_dists,
+            use_bessel = self.bessel(ma.masked_less_equal(self.dist_avg,
                                                           5 * s,
                                                           copy=True), s)
             use_taylor = self.t_series(use_bessel.mask, s)
@@ -349,7 +355,7 @@ class NbMC:
                    for i in xrange(self.n_markers)]
                   for j in xrange(self.n_dist_class)]).T
 
-        dist = self.unique_dists
+        dist = self.dist_avg
         fig, ax = plt.subplots(self.n_markers, 1, sharex=True,
                                figsize=(3, 1.5 * self.n_markers))
 

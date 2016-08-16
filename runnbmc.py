@@ -29,6 +29,11 @@ parser.add_argument(
     help="set data file delimiter"
 )
 parser.add_argument(
+    "--dist_bins", nargs='+', type=float, required=True,
+    help="List of bins for distance classes or single integer"
+         "represending the number of bins to be created")
+)
+parser.add_argument(
     "-u", "--mu", default=0.0001, type=float,
     help="mutation rate")
 parser.add_argument(
@@ -113,13 +118,14 @@ param.write(s)
 param.close()
 # intialize model
 nbmc = NbMC(args.mu, args.nb_start, args.density_start,
-            args.in_path+args.infile, args.outfile, args.out_path,
-            cartesian=args.cartesian, sep=sep)
+            args.in_path+args.infile, args.outfile, args.dist_bins,
+            args.out_path, cartesian=args.cartesian, sep=sep)
 # Set prior parameters
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
 # Run Model
-total = nbmc.run_model(args.iter, args.burn, args.thin, plot_diog=args.plot_diog,
-               plot_ppc=args.plot_ppc, plot_prior=args.plot_prior)
+total = nbmc.run_model(args.iter, args.burn, args.thin,
+                       plot_diog=args.plot_diog,
+                       plot_ppc=args.plot_ppc, plot_prior=args.plot_prior)
 # Run model comparison
 if args.mod_comp:
     nbmc.model_comp(args.iter, args.burn, args.thin)
