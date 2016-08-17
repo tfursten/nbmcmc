@@ -115,13 +115,24 @@ sep = {'comma': ',',
        'semicolon': ';'}[args.sep]
 param = open(args.out_path+args.outfile + "_params.txt", 'w')
 param.write(s)
-param.close()
+
 # intialize model
 nbmc = NbMC(args.mu, args.nb_start, args.density_start,
             args.in_path+args.infile, args.outfile, args.dist_bins,
             args.out_path, cartesian=args.cartesian, sep=sep)
 # Set prior parameters
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
+# Write out distance class data
+dist_info = nbmc.get_distance_classes()
+param.write("Distance Bins: " + " ".join(dist_info["bins"])+"\n")
+param.write("Average Distance in Bin: " +
+            " ".join(dist_info["avg_dist"]) + "\n")
+param.write("Avg. Pairs Per Bin: " + " ".join(dist_info["counts"]))
+param.close()
+dist_file_name = args.out_path + args.outfile + "_dist.txt"
+np.savetxt(dist_file_name, dist_info["dist_data"],
+           header="Ind1\tInd2\tDistance\tDistance Class\tAverage Distance",
+           fmt='%0d %0d %.4f %0d %.4f')
 # Run Model
 total = nbmc.run_model(args.iter, args.burn, args.thin,
                        plot_diog=args.plot_diog,

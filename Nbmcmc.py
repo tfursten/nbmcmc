@@ -172,6 +172,20 @@ class NbMC:
         self.iis_scaled = np.multiply(self.iis.T, scale_factor).T
         self.n_scaled = np.multiply(self.n.T, scale_factor).T
 
+    def get_distance_classes(self):
+        d_map = {dc: davg for dc, davg in zip(self.unique_dists,
+                                              self.dist_avg)}
+        avg_dist = np.array([d_map[d] for d in self.dist_class])
+        counts = np.array(np.mean(self.n, axis=0), dtype=str)
+        pairs = np.array([[p[0][1], p[1][1]] for p in self.pairs]).T
+        d_info = np.stack((pairs[0], pairs[1], self.dist,
+                           self.dist_class, avg_dist)).T
+        d_info = d_info[::2]
+        return {"bins": np.array(self.bins, dtype=str),
+                "avg_dist": np.array(self.dist_avg, dtype=str),
+                "dist_data": d_info,
+                "counts": counts}
+
     def set_taylor_terms(self):
         terms = 34
         t = np.array([i for i in xrange(terms)])
