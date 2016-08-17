@@ -74,9 +74,9 @@ class NbMC:
         self.unique_dists = None
         self.n_dist_class = None
         self.iis = None
-        self.iis_scaled = None
         self.n = None
         self.n_scaled = None
+        self.weights = None
         self.fbar = None
         self.fbar_1 = None
         self.n_alleles = None
@@ -129,7 +129,6 @@ class NbMC:
 
         for m in xrange(self.n_markers):
             this_iis = []
-            this_weight = []
             for i in xrange(self.n_ind-1):
                 for k in xrange(self.ploidy):
                     for j in xrange(i+1, self.n_ind):
@@ -154,7 +153,9 @@ class NbMC:
         self.dist_class = np.digitize(self.dist, self.bins)
         self.unique_dists = np.unique(self.dist_class)
         self.n_dist_class = self.unique_dists.size
-        self.dist_avg = np.array([np.mean(self.dist[np.where(self.dist_class == d)])
+        self.dist_avg = np.array([np.mean(
+                                          self.dist[np.where(
+                                           self.dist_class == d)])
                                   for d in self.unique_dists])
         self.iis = np.array([[np.nansum(iis[j][np.where(self.dist_class == i)])
                             for i in self.unique_dists]
@@ -167,9 +168,10 @@ class NbMC:
         self.fbar = np.divide(np.nansum(self.iis, axis=1),
                               np.nansum(self.n, axis=1))
         self.fbar_1 = np.subtract(1, self.fbar)
-        scale_factor = (self.n_alleles//2)/np.nansum(self.n, axis=1)
-        self.iis_scaled = np.multiply(self.iis.T, scale_factor).T
-        self.n_scaled = np.multiply(self.n.T, scale_factor).T
+        self.weights = (self.n_alleles//2)/np.nansum(self.n, axis=1)
+        # scaled total counts used when generating replicated data
+        self.n_scaled = np.array((self.n.T * self.weights).T, dtype=int)
+        self.n_scaled[np.where(self.n_scaled == 0)] = 1
 
     def get_distance_classes(self):
         d_map = {dc: davg for dc, davg in zip(self.unique_dists,
@@ -237,9 +239,9 @@ class NbMC:
                                                                 2 ** (-52)).T
 
         @pymc.stochastic(observed=True)
-        def marginal_binomial(value=self.iis_scaled, p=phi):
-            return np.sum((value * np.log(p) + (self.n_scaled - value) *
-                           np.log(1 - p)))
+        def marginal_binomial(value=self.iis, p=phi):
+            return np.sum((value * np.log(p) + (self.n - value) *
+                           np.log(1 - p)).T * self.weights)
 
         return locals()
 
@@ -298,9 +300,9 @@ class NbMC:
                                  for j in xrange(self.n_dist_class)])
 
         @pymc.stochastic(observed=True)
-        def marginal_bin(value=self.iis_scaled, p=phi):
-            return np.sum((value * np.log(p) + (self.n_scaled - value) *
-                           np.log(1 - p)))
+        def marginal_bin(value=self.iis, p=phi):
+            return np.sum((value * np.log(p) + (self.n - value) *
+                           np.log(1 - p)).T * self.weights)
 
         return locals()
 
@@ -354,7 +356,6 @@ class NbMC:
 
     def posterior_check(self):
         print "Plotting Posterior Predictive Check\n"
-
         upper_quant = np.array([[self.S.stats()["cml_rep_{}_{}".format(
                     i, j)]["quantiles"][97.5]
                     for i in xrange(self.n_markers)]
@@ -381,19 +382,21 @@ class NbMC:
         lower = np.subtract(mean, np.divide(lower_quant, self.n_scaled))
 
         max_y = np.amax(upper + mean) * 1.1
-        min_y = np.amin(mean-lower) * 0.90
+        min_y = np.amin(mean - lower)
+        min_y = min_y * 0.90 if min_y > 0.1 else -0.1
         for i in xrange(self.n_markers):
             ax[i].axhline(y=self.fbar[i], color=lite_grey, ls='solid',
-                          zorder=0)
+                          zorder=1)
             ax[i].errorbar(dist, mean[i], yerr=[lower[i],
-                           upper[i]], color=blue, zorder=1)
+                           upper[i]], color=blue, zorder=2)
             ax[i].plot(dist, np.divide(self.iis[i], self.n[i]), '.',
                        color=grey,
-                       markeredgewidth=0.0, zorder=2)
+                       markeredgewidth=0.0, zorder=3)
             ax[i].set_ylim(min_y, max_y)
             ax[i].tick_params(axis="both")
             ax[i].set_ylabel(self.marker_names[i], fontsize=9)
-        fig.text(0.5, 0.0, 'Distance (Meters)', ha='center', fontsize=9)
+        fig.text(0.5, 0.0, 'Distance (Meters)', ha='center', fontsize=9,
+                 color=grey)
         plt.savefig(self.out_path+self.out_file+"_ppc.pdf",
                     bbox_inches='tight')
 

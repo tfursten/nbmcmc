@@ -127,7 +127,7 @@ dist_info = nbmc.get_distance_classes()
 param.write("Distance Bins: " + " ".join(dist_info["bins"])+"\n")
 param.write("Average Distance in Bin: " +
             " ".join(dist_info["avg_dist"]) + "\n")
-param.write("Avg. Pairs Per Bin: " + " ".join(dist_info["counts"]))
+param.write("Avg. Pairs Per Bin: " + " ".join(dist_info["counts"]) + "\n")
 param.close()
 dist_file_name = args.out_path + args.outfile + "_dist.txt"
 np.savetxt(dist_file_name, dist_info["dist_data"],
