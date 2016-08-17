@@ -149,7 +149,6 @@ class NbMC:
         iis = np.array(iis, dtype=float)
         # set distance classes
         # if bins is an integer evenly divide distances into n bins
-        self.bins = np.arange(0, 14, 1)  # JUST FOR TESTING ***REMOVE****
         if self.bins.size == 1:
             self.bins = np.linspace(0, np.max(self.dist), int(self.bins))
         self.dist_class = np.digitize(self.dist, self.bins)
@@ -293,7 +292,7 @@ class NbMC:
 
         cml_rep = np.empty((self.n_markers, self.n_dist_class), dtype=object)
         cml_rep = pymc.Container([[pymc.Binomial('cml_rep_{}_{}'.format(i, j),
-                                 n=self.n[i][j],
+                                 n=self.n_scaled[i][j],
                                  p=phi[i][j])
                                  for i in xrange(self.n_markers)]
                                  for j in xrange(self.n_dist_class)])
@@ -377,9 +376,9 @@ class NbMC:
 
         plt.subplots_adjust(left=None, bottom=None, right=None, top=None,
                             wspace=None, hspace=0.3)
-        mean = np.divide(mean, self.n)
-        upper = np.subtract(np.divide(upper_quant, self.n), mean)
-        lower = np.subtract(mean, np.divide(lower_quant, self.n))
+        mean = np.divide(mean, self.n_scaled)
+        upper = np.subtract(np.divide(upper_quant, self.n_scaled), mean)
+        lower = np.subtract(mean, np.divide(lower_quant, self.n_scaled))
 
         max_y = np.amax(upper + mean) * 1.1
         min_y = np.amin(mean-lower) * 0.90
