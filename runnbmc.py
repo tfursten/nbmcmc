@@ -24,7 +24,7 @@ parser.add_argument(
     help="path for results"
 )
 parser.add_argument(
-    "sep", choices=['comma', 'space', 'tab', 'semicolon'],
+    "--sep", choices=['comma', 'space', 'tab', 'semicolon'],
     type=str, default='comma',
     help="set data file delimiter"
 )
@@ -128,6 +128,8 @@ param.write("Distance Bins: " + " ".join(dist_info["bins"])+"\n")
 param.write("Average Distance in Bin: " +
             " ".join(dist_info["avg_dist"]) + "\n")
 param.write("Avg. Pairs Per Bin: " + " ".join(dist_info["counts"]) + "\n")
+param.write("Avg. Scaled Pairs per Bin: " +
+            " ".join(dist_info["scaled_counts"]) + "\n")
 param.close()
 dist_file_name = args.out_path + args.outfile + "_dist.txt"
 np.savetxt(dist_file_name, dist_info["dist_data"],

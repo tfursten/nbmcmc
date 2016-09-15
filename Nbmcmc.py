@@ -96,6 +96,82 @@ class NbMC:
         self.d_prior_mu = d_mu
         self.d_prior_tau = d_tau
 
+    def parse_ind_data(self, data_file, pairs, cartesian, sep):
+        data = np.array(np.genfromtxt(data_file,
+                                      delimiter=sep,
+                                      dtype=str,
+                                      skip_header=False,
+                                      comments="#"))
+        self.marker_names = data[0][3:]
+        data = data[1:][:].T
+        coords = np.array(data[:][1:3].T, dtype=float)
+        if cartesian:
+            dist = scd.squareform(scd.pdist(coords, 'euclidean'))
+        else:
+            dist = scd.squareform(scd.pdist(coords, sph_law_of_cos))
+        markers = np.core.defchararray.lower(
+                                            np.array(
+                                             np.core.defchararray.split(
+                                              np.array(data[:][3:], ndmin=2),
+                                              sep="/").tolist(), dtype=str))
+        # order matters "na" needs to be after "nan"
+        for n in ["none", "nan", "na", "x", "-", "."]:
+            markers = np.core.defchararray.replace(markers, n, "0")
+        markers = markers.astype(int, copy=False)
+        self.n_markers, self.n_ind, self.ploidy = markers.shape
+        self.n_alleles = np.apply_over_axes(np.sum,
+                                            np.array(markers,
+                                                     dtype=bool),
+                                            [1, 2]).flatten()
+        iis = []
+        pair_dist = []
+
+        for m in xrange(self.n_markers):
+            this_iis = []
+            for p in pairs.T:
+                for k, pair in enumerate(p):
+                    if markers[m, pair[0], k] == 0 or markers[m, pair[1],
+                                                              k] == 0:
+                        this.iss.append(np.nan)
+                    elif markers[m, pair[0], k] == markers[m, pair[1], k]:
+                        this.iss.append(1)
+                    else:
+                        this_iss.append(0)
+                    if m == 0:
+                        pair_dist.append(dist[pair[0], pair[1]])
+            iss.append(this_iis)
+
+        self.dist = np.array(pair_dist)
+        self.pairs = np.array(pair_list)
+        iis = np.array(iis, dtype=float)
+        # set distance classes
+        # if bins is an integer evenly divide distances into n bins
+        if self.bins.size == 1:
+            self.bins = np.linspace(np.min(self.dist), np.max(self.dist),
+                                    int(self.bins))
+        self.dist_class = np.digitize(self.dist, self.bins)
+        self.unique_dists = np.unique(self.dist_class)
+        self.n_dist_class = self.unique_dists.size
+        self.dist_avg = np.array([np.mean(
+                                          self.dist[np.where(
+                                           self.dist_class == d)])
+                                  for d in self.unique_dists])
+        self.iis = np.array([[np.nansum(iis[j][np.where(self.dist_class == i)])
+                            for i in self.unique_dists]
+                            for j in xrange(self.n_markers)], dtype=float)
+        self.n = np.array([[iis[j][np.where(self.dist_class == i)].shape[0] -
+                          np.sum(
+                          np.isnan(iis[j][np.where(self.dist_class == i)]))
+                          for i in self.unique_dists]
+                          for j in xrange(self.n_markers)], dtype=float)
+        self.fbar = np.divide(np.nansum(self.iis, axis=1),
+                              np.nansum(self.n, axis=1))
+        self.fbar_1 = np.subtract(1, self.fbar)
+        self.weights = (self.n_alleles//2)/np.nansum(self.n, axis=1)
+        # scaled total counts used when generating replicated data
+        self.n_scaled = np.array((self.n.T * self.weights).T, dtype=int)
+        self.n_scaled[np.where(self.n_scaled == 0)] = 1
+
     def parse_data(self, data_file, cartesian, sep):
         data = np.array(np.genfromtxt(data_file,
                                       delimiter=sep,
@@ -149,7 +225,8 @@ class NbMC:
         # set distance classes
         # if bins is an integer evenly divide distances into n bins
         if self.bins.size == 1:
-            self.bins = np.linspace(0, np.max(self.dist), int(self.bins))
+            self.bins = np.linspace(np.min(self.dist), np.max(self.dist),
+                                    int(self.bins))
         self.dist_class = np.digitize(self.dist, self.bins)
         self.unique_dists = np.unique(self.dist_class)
         self.n_dist_class = self.unique_dists.size
@@ -178,6 +255,8 @@ class NbMC:
                                               self.dist_avg)}
         avg_dist = np.array([d_map[d] for d in self.dist_class])
         counts = np.array(np.mean(self.n, axis=0), dtype=str)
+        scaled_counts = np.array(np.mean(self.n_scaled, axis=0),
+                                 dtype=str)
         pairs = np.array([[p[0][1], p[1][1]] for p in self.pairs]).T
         d_info = np.stack((pairs[0], pairs[1], self.dist,
                            self.dist_class, avg_dist)).T
@@ -185,7 +264,8 @@ class NbMC:
         return {"bins": np.array(self.bins, dtype=str),
                 "avg_dist": np.array(self.dist_avg, dtype=str),
                 "dist_data": d_info,
-                "counts": counts}
+                "counts": counts,
+                "scaled_counts": scaled_counts}
 
     def set_taylor_terms(self):
         terms = 34
