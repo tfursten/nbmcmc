@@ -109,8 +109,10 @@ class NbMC:
 
     def get_independent_pairs(self, dists):
         # Pick independent pairs
-        bins = np.linspace(np.min(dists), np.max(dists), 20)
-        d = np.digitize(dists, bins)
+        if self.bins.size == 1:
+            self.bins = np.linspace(np.min(dists), np.max(dists),
+                                    int(self.bins))
+        d = np.digitize(dists, self.bins)
         uni, counts = np.unique(d, return_counts=True)
         freq = np.round(counts/float(np.sum(counts)) * self.n_ind//2)
 
@@ -126,7 +128,7 @@ class NbMC:
             arr = [0 for i in xrange(len(freq))]
             while go:
                 dd = grid_dist(ind[0], ind[1], sqrt(self.n_ind))
-                b = int(np.digitize(dd, bins)) - 1
+                b = int(np.digitize(dd, self.bins)) - 1
                 if arr[b] >= freq[b] and not finish:
                     random.shuffle(ind)
                     count += 1
@@ -191,10 +193,6 @@ class NbMC:
         self.pairs = np.array(pair_list)
         iis = np.array(iis, dtype=float)
         # set distance classes
-        # if bins is an integer evenly divide distances into n bins
-        if self.bins.size == 1:
-            self.bins = np.linspace(np.min(self.dist), np.max(self.dist),
-                                    int(self.bins))
         self.dist_class = np.digitize(self.dist, self.bins)
         self.unique_dists = np.unique(self.dist_class)
         self.n_dist_class = self.unique_dists.size
