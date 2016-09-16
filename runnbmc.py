@@ -75,13 +75,31 @@ parser.add_argument(
 parser.add_argument(
     "--mod_comp", action="store_true",
     help="Run DIC for null and alt model")
-parser.add_argument(
-    "--cartesian", default=True, type=bool,
-    help="Cartesian coordinates, geographical otherwise"
-)
+
+
+weight_parser = parser.add_mutually_exclusive_group(required=False)
+weight_parser.add_argument('--weight', dest='weight', action='store_true')
+weight_parser.add_argument('--no_weight', dest='weight', action='store_false')
+
+independent_parser = parser.add_mutually_exclusive_group(required=False)
+independent_parser.add_argument('--independent', dest='independent',
+                                action='store_true')
+independent_parser.add_argument('--pairwise', dest='independent',
+                                action='store_false')
+
+cartesian_parser = parser.add_mutually_exclusive_group(required=False)
+cartesian_parser.add_argument('--cartesian', dest='cartesian',
+                              action='store_true')
+cartesian_parser.add_argument('--geographical', dest='cartesian',
+                              action='store_false')
+
+parser.set_defaults(cartesian=False, weight=True, independent=False)
+
+
 args = parser.parse_args()
 
 start_time = time.time()
+
 
 s = str("Outfile: {}{}\n"
         "Infile: {}{}\n"
@@ -95,19 +113,23 @@ s = str("Outfile: {}{}\n"
         "MCMC iterations: {}\n"
         "MCMC burn: {}\n"
         "MCMC thin: {}\n"
-        "Cartesian: {}\n").format(args.out_path, args.outfile,
-                                  args.in_path, args.infile,
-                                  args.mu,
-                                  args.nb_start,
-                                  args.density_start,
-                                  args.nb_mu,
-                                  args.nb_tau,
-                                  args.d_mu,
-                                  args.d_tau,
-                                  args.iter,
-                                  args.burn,
-                                  args.thin,
-                                  args.cartesian)
+        "Cartesian: {}\n"
+        "Weight: {}\n"
+        "Independent: {}\n").format(args.out_path, args.outfile,
+                                    args.in_path, args.infile,
+                                    args.mu,
+                                    args.nb_start,
+                                    args.density_start,
+                                    args.nb_mu,
+                                    args.nb_tau,
+                                    args.d_mu,
+                                    args.d_tau,
+                                    args.iter,
+                                    args.burn,
+                                    args.thin,
+                                    args.cartesian,
+                                    args.weight,
+                                    args.independent)
 
 sep = {'comma': ',',
        'space': ' ',
@@ -115,11 +137,11 @@ sep = {'comma': ',',
        'semicolon': ';'}[args.sep]
 param = open(args.out_path+args.outfile + "_params.txt", 'w')
 param.write(s)
-
 # intialize model
 nbmc = NbMC(args.mu, args.nb_start, args.density_start,
             args.in_path+args.infile, args.outfile, args.dist_bins,
-            args.out_path, cartesian=args.cartesian, sep=sep)
+            out_path=args.out_path, cartesian=args.cartesian, sep=sep,
+            weight=args.weight, independent=args.independent)
 # Set prior parameters
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
 # Write out distance class data

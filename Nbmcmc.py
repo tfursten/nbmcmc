@@ -9,6 +9,7 @@ import scipy.stats as ss
 import pymc
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import random
 
 plt.style.use('ggplot')
 
@@ -32,6 +33,12 @@ def sph_law_of_cos(u, v):
     return acos(sin(u[0]) * sin(v[0]) +
                 cos(u[0]) * cos(v[0]) * cos(delta_lon)) * R
 
+
+def grid_dist(i, j, mx):
+    dix, diy = i // mx, i % mx
+    djx, djy = j // mx, j % mx
+    return scd.euclidean([dix, diy], [djx, djy])
+
 # def equirect(u, v):
 #    '''Returns distance between two geographic coordinates
 #    in meters using equirectangular approximation'''
@@ -49,7 +56,8 @@ def sph_law_of_cos(u, v):
 class NbMC:
 
     def __init__(self, mu, nb_start, density_start,
-                 data_file, out_file, bins, out_path="./", sep="\t",
+                 data_file, out_file, bins, independent=False,
+                 weight=True, out_path="./", sep="\t",
                  cartesian=True):
         self.mu = mu
         self.ploidy = None
@@ -81,7 +89,10 @@ class NbMC:
         self.fbar_1 = None
         self.n_alleles = None
         self.n_ind = None
-        self.parse_data(data_file, cartesian, sep)
+        if independent:
+            self.parse_ind_data(data_file, cartesian, sep)
+        else:
+            self.parse_data(data_file, cartesian, sep, weight)
         self.set_taylor_terms()
         self.nb_prior_mu = None
         self.nb_prior_tau = None
@@ -96,7 +107,41 @@ class NbMC:
         self.d_prior_mu = d_mu
         self.d_prior_tau = d_tau
 
-    def parse_ind_data(self, data_file, pairs, cartesian, sep):
+    def get_independent_pairs(self, dists):
+        # Pick independent pairs
+        bins = np.linspace(np.min(dists), np.max(dists), 20)
+        d = np.digitize(dists, bins)
+        uni, counts = np.unique(d, return_counts=True)
+        freq = np.round(counts/float(np.sum(counts)) * self.n_ind//2)
+
+        pairs = []
+
+        for k in xrange(self.ploidy):
+            these_pairs = []
+            go = True
+            finish = False
+            count = 0
+            ind = np.arange(self.n_ind).tolist()
+            random.shuffle(ind)
+            arr = [0 for i in xrange(len(freq))]
+            while go:
+                dd = grid_dist(ind[0], ind[1], sqrt(self.n_ind))
+                b = int(np.digitize(dd, bins)) - 1
+                if arr[b] >= freq[b] and not finish:
+                    random.shuffle(ind)
+                    count += 1
+                else:
+                    arr[b] += 1
+                    these_pairs.append([ind.pop(0), ind.pop(0)])
+                count += 1
+                if len(ind) < 2:
+                    go = False
+                if count >= 1000:
+                    finish = True
+            pairs.append(these_pairs)
+        return np.array(pairs).T
+
+    def parse_ind_data(self, data_file, cartesian, sep):
         data = np.array(np.genfromtxt(data_file,
                                       delimiter=sep,
                                       dtype=str,
@@ -125,21 +170,22 @@ class NbMC:
                                             [1, 2]).flatten()
         iis = []
         pair_dist = []
-
+        pair_list = []
         for m in xrange(self.n_markers):
             this_iis = []
-            for p in pairs.T:
-                for k, pair in enumerate(p):
-                    if markers[m, pair[0], k] == 0 or markers[m, pair[1],
-                                                              k] == 0:
-                        this.iss.append(np.nan)
+            pairs = self.get_independent_pairs(scd.squareform(dist))
+            for k, ploidy in enumerate(pairs):
+                for pair in ploidy:
+                    if markers[m, pair[0], k] == 0 or markers[m, pair[1], k] == 0:
+                        this.iis.append(np.nan)
                     elif markers[m, pair[0], k] == markers[m, pair[1], k]:
-                        this.iss.append(1)
+                        this_iis.append(1)
                     else:
-                        this_iss.append(0)
+                        this_iis.append(0)
                     if m == 0:
                         pair_dist.append(dist[pair[0], pair[1]])
-            iss.append(this_iis)
+                        pair_list.append([[m, pair[0], k], [m, pair[1], k]])
+            iis.append(this_iis)
 
         self.dist = np.array(pair_dist)
         self.pairs = np.array(pair_list)
@@ -167,12 +213,12 @@ class NbMC:
         self.fbar = np.divide(np.nansum(self.iis, axis=1),
                               np.nansum(self.n, axis=1))
         self.fbar_1 = np.subtract(1, self.fbar)
+        self.weights = 1
+        self.n_scaled = self.n
         self.weights = (self.n_alleles//2)/np.nansum(self.n, axis=1)
-        # scaled total counts used when generating replicated data
-        self.n_scaled = np.array((self.n.T * self.weights).T, dtype=int)
-        self.n_scaled[np.where(self.n_scaled == 0)] = 1
 
-    def parse_data(self, data_file, cartesian, sep):
+
+    def parse_data(self, data_file, cartesian, sep, do_weight):
         data = np.array(np.genfromtxt(data_file,
                                       delimiter=sep,
                                       dtype=str,
@@ -245,10 +291,14 @@ class NbMC:
         self.fbar = np.divide(np.nansum(self.iis, axis=1),
                               np.nansum(self.n, axis=1))
         self.fbar_1 = np.subtract(1, self.fbar)
-        self.weights = (self.n_alleles//2)/np.nansum(self.n, axis=1)
-        # scaled total counts used when generating replicated data
-        self.n_scaled = np.array((self.n.T * self.weights).T, dtype=int)
-        self.n_scaled[np.where(self.n_scaled == 0)] = 1
+        if do_weight:
+            self.weights = (self.n_alleles//2)/np.nansum(self.n, axis=1)
+            # scaled total counts used when generating replicated data
+            self.n_scaled = np.array((self.n.T * self.weights).T, dtype=int)
+            self.n_scaled[np.where(self.n_scaled == 0)] = 1
+        else:
+            self.weights = 1
+            self.n_scaled = self.n
 
     def get_distance_classes(self):
         d_map = {dc: davg for dc, davg in zip(self.unique_dists,
