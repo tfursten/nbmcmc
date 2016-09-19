@@ -115,7 +115,6 @@ class NbMC:
         d = np.digitize(dists, self.bins)
         uni, counts = np.unique(d, return_counts=True)
         freq = np.round(counts/float(np.sum(counts)) * self.n_ind//2)
-
         pairs = []
 
         for k in xrange(self.ploidy):

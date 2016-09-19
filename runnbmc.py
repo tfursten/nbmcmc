@@ -153,10 +153,10 @@ param.write("Avg. Pairs Per Bin: " + " ".join(dist_info["counts"]) + "\n")
 param.write("Avg. Scaled Pairs per Bin: " +
             " ".join(dist_info["scaled_counts"]) + "\n")
 param.close()
-dist_file_name = args.out_path + args.outfile + "_dist.txt"
-np.savetxt(dist_file_name, dist_info["dist_data"],
-           header="Ind1\tInd2\tDistance\tDistance Class\tAverage Distance",
-           fmt='%0d %0d %.4f %0d %.4f')
+#dist_file_name = args.out_path + args.outfile + "_dist.txt"
+#np.savetxt(dist_file_name, dist_info["dist_data"],
+#           header="Ind1\tInd2\tDistance\tDistance Class\tAverage Distance",
+#           fmt='%0d %0d %.4f %0d %.4f')
 # Run Model
 total = nbmc.run_model(args.iter, args.burn, args.thin,
                        plot_diog=args.plot_diog,
