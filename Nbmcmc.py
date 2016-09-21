@@ -33,12 +33,6 @@ def sph_law_of_cos(u, v):
     return acos(sin(u[0]) * sin(v[0]) +
                 cos(u[0]) * cos(v[0]) * cos(delta_lon)) * R
 
-
-def grid_dist(i, j, mx):
-    dix, diy = i // mx, i % mx
-    djx, djy = j // mx, j % mx
-    return scd.euclidean([dix, diy], [djx, djy])
-
 # def equirect(u, v):
 #    '''Returns distance between two geographic coordinates
 #    in meters using equirectangular approximation'''
@@ -110,13 +104,15 @@ class NbMC:
     def get_independent_pairs(self, dists):
         # Pick independent pairs
         if self.bins.size == 1:
-            self.bins = np.linspace(np.min(dists), np.max(dists),
+            self.bins = np.linspace(np.min(dists[np.nonzero(dists)]),
+                                    np.max(dists),
                                     int(self.bins))
         d = np.digitize(dists, self.bins)
         uni, counts = np.unique(d, return_counts=True)
-        freq = np.round(counts/float(np.sum(counts)) * self.n_ind//2)
+        #freq = np.array([(np.max(self.n_alleles)/4)/self.bins.size for i in xrange(int(self.bins.size))])
+        freq = np.round(counts/float(np.sum(counts)) * self.n_ind//2)[1:]
         pairs = []
-
+        #for k in xrange(self.ploidy**2):
         for k in xrange(self.ploidy):
             these_pairs = []
             go = True
@@ -126,8 +122,7 @@ class NbMC:
             random.shuffle(ind)
             arr = [0 for i in xrange(len(freq))]
             while go:
-                dd = grid_dist(ind[0], ind[1], sqrt(self.n_ind))
-                b = int(np.digitize(dd, self.bins)) - 1
+                b = d[ind[0], ind[1]] - 1
                 if arr[b] >= freq[b] and not finish:
                     random.shuffle(ind)
                     count += 1
@@ -140,7 +135,7 @@ class NbMC:
                 if count >= 1000:
                     finish = True
             pairs.append(these_pairs)
-        return np.array(pairs).T
+        return np.array(pairs)
 
     def parse_ind_data(self, data_file, cartesian, sep):
         data = np.array(np.genfromtxt(data_file,
@@ -172,48 +167,53 @@ class NbMC:
         iis = []
         pair_dist = []
         pair_list = []
+        comp = [[0, 0], [1, 1]]
+        #comp = [[0, 0], [1, 1], [0, 1], [1, 0]]
         for m in xrange(self.n_markers):
             this_iis = []
-            pairs = self.get_independent_pairs(scd.squareform(dist))
+            this_dist = []
+            this_pair_list = []
+            pairs = self.get_independent_pairs(dist)
             for k, ploidy in enumerate(pairs):
                 for pair in ploidy:
-                    if markers[m, pair[0], k] == 0 or markers[m, pair[1], k] == 0:
+                    if markers[m, pair[0], comp[k][0]] == 0 or markers[m, pair[1], comp[k][1]] == 0:
                         this.iis.append(np.nan)
-                    elif markers[m, pair[0], k] == markers[m, pair[1], k]:
+                    elif markers[m, pair[0], comp[k][0]] == markers[m, pair[1], comp[k][1]]:
                         this_iis.append(1)
                     else:
                         this_iis.append(0)
-                    if m == 0:
-                        pair_dist.append(dist[pair[0], pair[1]])
-                        pair_list.append([[m, pair[0], k], [m, pair[1], k]])
+                    this_dist.append(dist[pair[0], pair[1]])
+                    this_pair_list.append([[m, pair[0], comp[k][0]],
+                                          [m, pair[1], comp[k][1]]])
             iis.append(this_iis)
+            pair_dist.append(this_dist)
+            pair_list.append(this_pair_list)
 
-        self.dist = np.array(pair_dist)
+        self.dist = np.array(pair_dist, dtype=float)
         self.pairs = np.array(pair_list)
         iis = np.array(iis, dtype=float)
         # set distance classes
-        self.dist_class = np.digitize(self.dist, self.bins)
+        self.dist_class = np.subtract(np.digitize(self.dist, self.bins), 1)
         self.unique_dists = np.unique(self.dist_class)
         self.n_dist_class = self.unique_dists.size
+
         self.dist_avg = np.array([np.mean(
                                           self.dist[np.where(
                                            self.dist_class == d)])
                                   for d in self.unique_dists])
-        self.iis = np.array([[np.nansum(iis[j][np.where(self.dist_class == i)])
-                            for i in self.unique_dists]
-                            for j in xrange(self.n_markers)], dtype=float)
-        self.n = np.array([[iis[j][np.where(self.dist_class == i)].shape[0] -
+        self.iis = np.array([[np.nansum(iis[m][np.where(self.dist_class[m] == d)])
+                            for d in self.unique_dists]
+                            for m in xrange(self.n_markers)], dtype=float)
+        self.n = np.array([[iis[m][np.where(self.dist_class[m] == d)].shape[0] -
                           np.sum(
-                          np.isnan(iis[j][np.where(self.dist_class == i)]))
-                          for i in self.unique_dists]
-                          for j in xrange(self.n_markers)], dtype=float)
+                          np.isnan(iis[m][np.where(self.dist_class[m] == d)]))
+                          for d in self.unique_dists]
+                          for m in xrange(self.n_markers)], dtype=float)
         self.fbar = np.divide(np.nansum(self.iis, axis=1),
                               np.nansum(self.n, axis=1))
         self.fbar_1 = np.subtract(1, self.fbar)
         self.weights = 1
         self.n_scaled = self.n
-        self.weights = (self.n_alleles//2)/np.nansum(self.n, axis=1)
-
 
     def parse_data(self, data_file, cartesian, sep, do_weight):
         data = np.array(np.genfromtxt(data_file,
@@ -298,19 +298,19 @@ class NbMC:
             self.n_scaled = self.n
 
     def get_distance_classes(self):
-        d_map = {dc: davg for dc, davg in zip(self.unique_dists,
-                                              self.dist_avg)}
-        avg_dist = np.array([d_map[d] for d in self.dist_class])
+        #d_map = {dc: davg for dc, davg in zip(self.unique_dists,
+                                              #self.dist_avg)}
+        #avg_dist = np.nanmean(self.dist_avg, axis=0)
         counts = np.array(np.mean(self.n, axis=0), dtype=str)
         scaled_counts = np.array(np.mean(self.n_scaled, axis=0),
                                  dtype=str)
         pairs = np.array([[p[0][1], p[1][1]] for p in self.pairs]).T
-        d_info = np.stack((pairs[0], pairs[1], self.dist,
-                           self.dist_class, avg_dist)).T
-        d_info = d_info[::2]
+        # d_info = np.stack((pairs[0], pairs[1], self.dist,
+        #                   self.dist_class, avg_dist)).T
+        # d_info = d_info[::2]
         return {"bins": np.array(self.bins, dtype=str),
                 "avg_dist": np.array(self.dist_avg, dtype=str),
-                "dist_data": d_info,
+                #"dist_data": d_info,
                 "counts": counts,
                 "scaled_counts": scaled_counts}
 
@@ -330,10 +330,10 @@ class NbMC:
 
     def t_series(self, mask, sigma):
         return ma.array(np.sum(
-                        np.multiply(
-                            np.divide(1., np.power(float(sigma), self.t2)),
-                            self.taylor_terms),
-                        axis=1), mask=mask)
+                     np.multiply(
+                         np.divide(1., np.power(float(sigma), self.t2)),
+                         self.taylor_terms),
+                     axis=1), mask=mask)
 
     def bessel(self, x, sigma):
         return sp.k0((x / float(sigma)) * self.sqrz)
@@ -407,8 +407,7 @@ class NbMC:
             p = np.divide(np.subtract(phi.T, phi_bar),
                           np.subtract(1, phi_bar)).T
             p = (self.fbar + self.fbar_1 * p.T).T
-            p = np.array((ma.masked_less(p, 0)).filled(2 ** (-52)),
-                         dtype=float)
+            p = np.array(ma.masked_less(p, 0).filled(2 ** (-52)), dtype=float)
             return p
 
         # cml = np.empty((self.n_markers, self.n_dist_class), dtype=object)
@@ -507,10 +506,12 @@ class NbMC:
         mean = np.divide(mean, self.n_scaled)
         upper = np.subtract(np.divide(upper_quant, self.n_scaled), mean)
         lower = np.subtract(mean, np.divide(lower_quant, self.n_scaled))
-
-        max_y = np.amax(upper + mean) * 1.1
-        min_y = np.amin(mean - lower)
-        min_y = min_y * 0.90 if min_y > 0.1 else -0.1
+        max_y = 1.1
+        min_y = -0.1
+        #max_y = np.amax(upper + mean) * 1.1
+        #min_y = np.amin(mean - lower)
+        #min_y = min_y * 0.90 if min_y > 0.1 else -0.1
+        max_x = np.max(self.bins) * 1.1
         for i in xrange(self.n_markers):
             ax[i].axhline(y=self.fbar[i], color=lite_grey, ls='solid',
                           zorder=1)
@@ -520,6 +521,7 @@ class NbMC:
                        color=grey,
                        markeredgewidth=0.0, zorder=3)
             ax[i].set_ylim(min_y, max_y)
+            ax[i].set_xlim(0, max_x)
             ax[i].tick_params(axis="both")
             ax[i].set_ylabel(self.marker_names[i], fontsize=9)
         fig.text(0.5, 0.0, 'Distance (Meters)', ha='center', fontsize=9,
