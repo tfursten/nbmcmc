@@ -52,7 +52,7 @@ class NbMC:
     def __init__(self, mu, nb_start, density_start,
                  data_file, out_file, bins, independent=False,
                  weight=True, out_path="./", sep="\t",
-                 cartesian=True):
+                 cartesian=True, gen_data=False):
         self.mu = mu
         self.ploidy = None
         self.data_file = data_file
@@ -83,7 +83,9 @@ class NbMC:
         self.fbar_1 = None
         self.n_alleles = None
         self.n_ind = None
-        if independent:
+        if gen_data:
+            self.parse_gen_data(data_file, cartesian, sep)
+        elif independent:
             self.parse_ind_data(data_file, cartesian, sep)
         else:
             self.parse_data(data_file, cartesian, sep, weight)
@@ -136,6 +138,31 @@ class NbMC:
                     finish = True
             pairs.append(these_pairs)
         return np.array(pairs)
+
+
+    def parse_gen_data(self, data_file, cartesian, sep, nb=1., s=1.):
+        #self.parse_data(data_file, cartesian, sep, True)
+        self.parse_ind_data(data_file, cartesian, sep)
+        self.set_taylor_terms()
+        denom = 4.0 * pi * nb + self.g0
+        use_bessel = self.bessel(ma.masked_less_equal(self.dist_avg,
+                                                      5 * s,
+                                                      copy=True), s)
+        use_taylor = self.t_series(use_bessel.mask, s)
+        phi = np.tile(np.divide(use_bessel.filled(use_taylor), denom),
+                      (self.n_markers, 1))
+        phi_bar = np.divide(np.sum(np.multiply(self.n, phi), axis=1),
+                            np.sum(self.n, axis=1))
+        p = np.divide(np.subtract(phi.T, phi_bar),
+                      np.subtract(1, phi_bar)).T
+        p = (self.fbar + self.fbar_1 * p.T).T
+        p = np.array(ma.masked_less(p, 0).filled(2 ** (-52)), dtype=float)
+        print p, p.shape, self.n, self.n.shape
+        self.iis = np.random.binomial(np.array(self.n, dtype=int), p)
+        #self.n = self.n_scaled
+        #self.weight = 1
+        print self.iis
+
 
     def parse_ind_data(self, data_file, cartesian, sep):
         data = np.array(np.genfromtxt(data_file,

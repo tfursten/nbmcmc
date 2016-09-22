@@ -75,23 +75,33 @@ parser.add_argument(
 parser.add_argument(
     "--mod_comp", action="store_true",
     help="Run DIC for null and alt model")
+parser.add_argument(
+    "--gen_data", action="store_true", default=False,
+    help="Simulate data"
+)
 
 
 weight_parser = parser.add_mutually_exclusive_group(required=False)
-weight_parser.add_argument('--weight', dest='weight', action='store_true')
-weight_parser.add_argument('--no_weight', dest='weight', action='store_false')
+weight_parser.add_argument('--weight', dest='weight', action='store_true',
+                           help="Weigh pairwise composite marginal likelihood")
+weight_parser.add_argument('--no_weight', dest='weight', action='store_false',
+                           help="Do not weigh pairwise CML")
 
 independent_parser = parser.add_mutually_exclusive_group(required=False)
 independent_parser.add_argument('--independent', dest='independent',
-                                action='store_true')
+                                action='store_true',
+                                help="Only choose independent pairs of alleles")
 independent_parser.add_argument('--pairwise', dest='independent',
-                                action='store_false')
+                                action='store_false',
+                                help="Do all pairwise comparisons of alleles")
 
 cartesian_parser = parser.add_mutually_exclusive_group(required=False)
 cartesian_parser.add_argument('--cartesian', dest='cartesian',
-                              action='store_true')
+                              action='store_true',
+                              help="Specify that coordinates are Cartesian")
 cartesian_parser.add_argument('--geographical', dest='cartesian',
-                              action='store_false')
+                              action='store_false',
+                              help="Specify that coordinates are geographical")
 
 parser.set_defaults(cartesian=False, weight=True, independent=False)
 
@@ -141,7 +151,8 @@ param.write(s)
 nbmc = NbMC(args.mu, args.nb_start, args.density_start,
             args.in_path+args.infile, args.outfile, args.dist_bins,
             out_path=args.out_path, cartesian=args.cartesian, sep=sep,
-            weight=args.weight, independent=args.independent)
+            weight=args.weight, independent=args.independent,
+            gen_data=args.gen_data)
 # Set prior parameters
 nbmc.set_prior_params(args.nb_mu, args.nb_tau, args.d_mu, args.d_tau)
 # Write out distance class data
