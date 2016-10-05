@@ -140,10 +140,19 @@ class NbMC:
         return np.array(pairs)
 
 
-    def parse_gen_data(self, data_file, cartesian, sep, nb=1., s=1.):
-        #self.parse_data(data_file, cartesian, sep, True)
-        self.parse_ind_data(data_file, cartesian, sep)
+    def parse_gen_data(self, data_file, cartesian, sep, nb=1.0, s=1.0):
+        self.n_markers = 30
+        self.dist = np.arange(1, 21)
+        self.bins = np.arange(1, 21)
+        self.dist_class = np.digitize(self.dist, self.bins)
+        self.n_dist_class = len(self.dist_class)
+        self.dist_avg = self.dist_class
         self.set_taylor_terms()
+        self.fbar = np.array([[0.5 for i in xrange(self.n_dist_class)]
+                               for j in xrange(self.n_markers)])
+        self.fbar_1 = np.subtract(1, self.fbar)
+        self.n = np.array([[80 for i in xrange(self.n_dist_class)]
+                          for j in xrange(self.n_markers)], dtype=float)
         denom = 4.0 * pi * nb + self.g0
         use_bessel = self.bessel(ma.masked_less_equal(self.dist_avg,
                                                       5 * s,
@@ -154,15 +163,12 @@ class NbMC:
         phi_bar = np.divide(np.sum(np.multiply(self.n, phi), axis=1),
                             np.sum(self.n, axis=1))
         p = np.divide(np.subtract(phi.T, phi_bar),
-                      np.subtract(1, phi_bar)).T
-        p = (self.fbar + self.fbar_1 * p.T).T
+                      np.subtract(1, phi_bar).T)
+        p = (self.fbar + self.fbar_1 * p.T)
         p = np.array(ma.masked_less(p, 0).filled(2 ** (-52)), dtype=float)
-        print p, p.shape, self.n, self.n.shape
         self.iis = np.random.binomial(np.array(self.n, dtype=int), p)
-        #self.n = self.n_scaled
-        #self.weight = 1
-        print self.iis
-
+        self.weights = 1.0
+        self.n_scaled = self.n
 
     def parse_ind_data(self, data_file, cartesian, sep):
         data = np.array(np.genfromtxt(data_file,
@@ -331,7 +337,7 @@ class NbMC:
         counts = np.array(np.mean(self.n, axis=0), dtype=str)
         scaled_counts = np.array(np.mean(self.n_scaled, axis=0),
                                  dtype=str)
-        pairs = np.array([[p[0][1], p[1][1]] for p in self.pairs]).T
+        #pairs = np.array([[p[0][1], p[1][1]] for p in self.pairs]).T
         # d_info = np.stack((pairs[0], pairs[1], self.dist,
         #                   self.dist_class, avg_dist)).T
         # d_info = d_info[::2]
@@ -433,7 +439,7 @@ class NbMC:
                                 np.sum(self.n, axis=1))
             p = np.divide(np.subtract(phi.T, phi_bar),
                           np.subtract(1, phi_bar)).T
-            p = (self.fbar + self.fbar_1 * p.T).T
+            p = (self.fbar + self.fbar_1 * p)
             p = np.array(ma.masked_less(p, 0).filled(2 ** (-52)), dtype=float)
             return p
 
@@ -455,7 +461,7 @@ class NbMC:
         @pymc.stochastic(observed=True)
         def marginal_bin(value=self.iis, p=phi):
             return np.sum((value * np.log(p) + (self.n - value) *
-                           np.log(1 - p)).T * self.weights)
+                           np.log(1 - p)) * self.weights)
 
         return locals()
 
